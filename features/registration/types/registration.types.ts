@@ -1,4 +1,7 @@
+import { UserType } from "@/lib/types/user.types";
+
 export type RegistrationFormData = {
+  userType: UserType | "";
   username: string;
   email: string;
   password: string;

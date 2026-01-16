@@ -2,12 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Briefcase, User } from "lucide-react";
 import type { RegistrationFormData } from "../types/registration.types";
+import { UserType } from "@/lib/types/user.types";
 
 export function RegistrationForm() {
   const router = useRouter();
   const [formData, setFormData] = useState<RegistrationFormData>({
+    userType: "",
     username: "",
     email: "",
     password: "",
@@ -30,6 +32,11 @@ export function RegistrationForm() {
 
   const validate = (): boolean => {
     const newErrors: Partial<Record<keyof RegistrationFormData | "submit", string>> = {};
+
+    // User type validation
+    if (!formData.userType) {
+      newErrors.userType = "Please select your user type";
+    }
 
     // Username validation
     if (!formData.username.trim()) {
@@ -87,6 +94,7 @@ export function RegistrationForm() {
           username: formData.username,
           email: formData.email,
           password: formData.password,
+          type: formData.userType,
         }),
       });
 
@@ -263,6 +271,74 @@ export function RegistrationForm() {
           <p className="mt-1 text-xs text-destructive">{errors.confirmPassword}</p>
         )}
       </div>
+
+            {/* User Type Selection */}
+            <div className="space-y-3">
+        <label className="block text-sm font-medium">
+          I am a <span className="text-destructive">*</span>
+        </label>
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            type="button"
+            onClick={() => {
+              setFormData((prev) => ({ ...prev, userType: UserType.EMPLOYER }));
+              if (errors.userType) {
+                setErrors((prev) => ({ ...prev, userType: undefined }));
+              }
+            }}
+            className={`relative flex flex-col items-center justify-center rounded-lg border-2 p-6 transition-all hover:border-primary ${
+              formData.userType === UserType.EMPLOYER
+                ? "border-primary bg-primary/5 shadow-md"
+                : "border-border bg-card hover:bg-accent/50"
+            }`}
+          >
+            <Briefcase className={`h-8 w-8 mb-2 ${formData.userType === UserType.EMPLOYER ? "text-primary" : "text-muted-foreground"}`} />
+            <span className={`font-semibold ${formData.userType === UserType.EMPLOYER ? "text-primary" : "text-foreground"}`}>
+              Employer
+            </span>
+            <span className="text-xs text-muted-foreground mt-1">Post jobs and find talent</span>
+            {formData.userType === UserType.EMPLOYER && (
+              <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setFormData((prev) => ({ ...prev, userType: UserType.CANDIDATE }));
+              if (errors.userType) {
+                setErrors((prev) => ({ ...prev, userType: undefined }));
+              }
+            }}
+            className={`relative flex flex-col items-center justify-center rounded-lg border-2 p-6 transition-all hover:border-primary ${
+              formData.userType === UserType.CANDIDATE
+                ? "border-primary bg-primary/5 shadow-md"
+                : "border-border bg-card hover:bg-accent/50"
+            }`}
+          >
+            <User className={`h-8 w-8 mb-2 ${formData.userType === UserType.CANDIDATE ? "text-primary" : "text-muted-foreground"}`} />
+            <span className={`font-semibold ${formData.userType === UserType.CANDIDATE ? "text-primary" : "text-foreground"}`}>
+              Candidate
+            </span>
+            <span className="text-xs text-muted-foreground mt-1">Find jobs and apply</span>
+            {formData.userType === UserType.CANDIDATE && (
+              <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                <svg className="h-3 w-3 text-primary-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            )}
+          </button>
+        </div>
+        {errors.userType && (
+          <p className="text-xs text-destructive">{errors.userType}</p>
+        )}
+      </div>
+
 
       {/* Submit Button */}
       <button

@@ -17,16 +17,41 @@ type StrapiAuthResponse = {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json().catch(() => null);
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError) {
+      console.error("Failed to parse request body:", parseError);
+      return NextResponse.json(
+        { error: "Invalid request body. Please ensure the request is properly formatted." },
+        { status: 400 }
+      );
+    }
+
+    if (!body || typeof body !== "object") {
+      return NextResponse.json(
+        { error: "Request body is required" },
+        { status: 400 }
+      );
+    }
 
     const username = body?.username as string | undefined;
     const email = body?.email as string | undefined;
     const password = body?.password as string | undefined;
+    const type = body?.type as string | undefined;
 
     // Validate required fields
     if (!username || !email || !password) {
       return NextResponse.json(
         { error: "Username, email, and password are required" },
+        { status: 400 }
+      );
+    }
+
+    // Validate user type
+    if (!type || (type !== "EMPLOYER" && type !== "CANDIDATE")) {
+      return NextResponse.json(
+        { error: "Please select a valid user type (EMPLOYER or CANDIDATE)" },
         { status: 400 }
       );
     }
@@ -65,38 +90,63 @@ export async function POST(request: NextRequest) {
 
     // Prepare registration data for Strapi auth/local/register
     // Strapi requires: username, email, password
+    // We also include the type field for user type
     const registrationData = {
       username: username,
       email: email,
       password: password,
+      type: type,
     };
 
     // Call Strapi registration endpoint
-    const response = await fetch(`${strapiUrl}/api/auth/local/register`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(registrationData),
-    });
+    let response: Response;
+    try {
+      response = await fetch(`${strapiUrl}/api/auth/local/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(registrationData),
+      });
+    } catch (fetchError) {
+      console.error("Fetch error:", fetchError);
+      return NextResponse.json(
+        { error: "Failed to connect to Strapi. Please try again later." },
+        { status: 503 }
+      );
+    }
 
-    const result = await response.json().catch(() => ({}));
+    let result: Record<string, unknown> = {};
+    try {
+      const responseText = await response.text();
+      if (responseText) {
+        result = JSON.parse(responseText) as Record<string, unknown>;
+      }
+    } catch (parseError) {
+      console.error("Failed to parse Strapi response:", parseError);
+      result = {};
+    }
 
     if (!response.ok) {
-
       let errorMessage = "Registration failed. Please try again.";
       
-      if (result?.error?.error?.message) {
-        // Nested error structure: { error: { error: { message: "..." } } }
-        errorMessage = result.error.error.message;
-      } else if (result?.error?.message) {
-        errorMessage = result.error.message;
-      } else if (result?.error?.data?.[0]?.messages?.[0]?.message) {
-        errorMessage = result.error.data[0].messages[0].message;
-      } else if (result?.message) {
+      // Type-safe error extraction
+      const errorObj = result?.error as Record<string, unknown> | undefined;
+      const errorData = errorObj?.data as Array<{ messages?: Array<{ message?: string }> }> | undefined;
+      
+      if (errorObj?.error && typeof errorObj.error === "object") {
+        const nestedError = errorObj.error as Record<string, unknown>;
+        if (typeof nestedError.message === "string") {
+          errorMessage = nestedError.message;
+        }
+      } else if (errorObj && typeof errorObj.message === "string") {
+        errorMessage = errorObj.message;
+      } else if (errorData?.[0]?.messages?.[0]?.message) {
+        errorMessage = errorData[0].messages[0].message;
+      } else if (typeof result?.message === "string") {
         errorMessage = result.message;
-      } else if (typeof result?.error === "string") {
-        errorMessage = result.error;
+      } else if (typeof errorObj === "string") {
+        errorMessage = errorObj;
       }
       
       console.error("Strapi registration error:", {
@@ -114,7 +164,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const authData = result as StrapiAuthResponse;
+    const authData = result as unknown as StrapiAuthResponse;
 
     // Check if email confirmation is required
     // When email confirmation is enabled in Strapi:

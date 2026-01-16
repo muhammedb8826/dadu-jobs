@@ -49,11 +49,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const siteName =
     global.data?.defaultSeo?.metaTitle ||
     global.data?.siteName ||
-    "DADU Admission";
+    "DADU Jobs";
   const description =
     global.data?.defaultSeo?.metaDescription ||
     global.data?.siteDescription ||
-    "Admission";
+    "Jobs";
 
   const faviconUrl = global.data?.favicon?.url
     ? new URL(global.data.favicon.url, getStrapiURL()).toString()

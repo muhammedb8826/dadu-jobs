@@ -3,7 +3,7 @@ import { resolveImageUrl } from "@/lib/strapi/media";
 import { StrapiGlobalResponse, GlobalData } from "../types/global.types";
 
 export const EMPTY_GLOBAL_DATA: GlobalData = {
-  siteName: "DADU Admission",
+  siteName: "DADU Jobs",
   siteDescription: "",
   topHeader: {
     email: undefined,
@@ -18,7 +18,7 @@ export const EMPTY_GLOBAL_DATA: GlobalData = {
     buttons: [],
   },
   footer: {
-    copyRight: "© DADU Admission. All rights reserved.",
+    copyRight: "© DADU Jobs. All rights reserved.",
     about: undefined,
     quickLinks: {
       title: undefined,
@@ -166,7 +166,7 @@ export async function fetchGlobalData(): Promise<GlobalData> {
       },
       footer: {
         copyRight:
-          data.footer?.copyRight || "© DADU Admission. All rights reserved.",
+          data.footer?.copyRight || "© DADU Jobs. All rights reserved.",
         about: data.footer?.about
           ? {
               title: data.footer.about.title || undefined,
