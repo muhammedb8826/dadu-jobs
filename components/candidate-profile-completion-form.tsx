@@ -325,6 +325,8 @@ export function CandidateProfileCompletionForm() {
       }
 
       // Prepare payload
+      // ALWAYS include skills, education, and experience (even if empty arrays)
+      // This ensures the server state matches the frontend state
       const payload: Record<string, unknown> = {
         fullName: formData.fullName,
         phone: formData.phone,
@@ -342,8 +344,9 @@ export function CandidateProfileCompletionForm() {
       // Handle skills - for manyToOne relation, we need to send IDs or objects
       // The API route will process objects and convert them to IDs
       // Send objects for new skills (no ID), IDs for existing skills
-      if (formData.skills.length > 0) {
-        payload.skills = formData.skills.map((skill) => {
+      // ALWAYS include this array, even if empty, to sync with server
+      payload.skills = formData.skills
+        .map((skill) => {
           // If skill has an ID, send just the ID (existing skill)
           if (skill.id) {
             return skill.id;
@@ -358,57 +361,54 @@ export function CandidateProfileCompletionForm() {
           }
           // Skip invalid skills
           return null;
-        }).filter((skill): skill is number | { skillName: string; level: string } => skill !== null);
-      }
+        })
+        .filter((skill): skill is number | { skillName: string; level: string } => skill !== null);
 
       // Education and experience are components - can be passed as arrays
       // Include ID if present (for updates), omit if not (for creates)
-      if (formData.education.length > 0) {
-        payload.education = formData.education.map((edu) => {
-          const eduData: Record<string, unknown> = {
-            institution: edu.institution,
-            degree: edu.degree,
-            fieldOfStudy: edu.fieldOfStudy,
-            startDate: edu.startDate,
-            endDate: edu.endDate,
-          };
-          if (edu.description) {
-            eduData.description = edu.description;
-          }
-          // Include ID if present (for updates)
-          if (edu.id) {
-            eduData.id = edu.id;
-          }
-          return eduData;
-        });
-      }
+      // ALWAYS include these arrays, even if empty, to sync with server
+      payload.education = formData.education.map((edu) => {
+        const eduData: Record<string, unknown> = {
+          institution: edu.institution,
+          degree: edu.degree,
+          fieldOfStudy: edu.fieldOfStudy,
+          startDate: edu.startDate,
+          endDate: edu.endDate,
+        };
+        if (edu.description) {
+          eduData.description = edu.description;
+        }
+        // Include ID if present (for updates)
+        if (edu.id) {
+          eduData.id = edu.id;
+        }
+        return eduData;
+      });
 
-      if (formData.experience.length > 0) {
-        payload.experience = formData.experience.map((exp) => {
-          const expData: Record<string, unknown> = {
-            companyName: exp.companyName,
-            jobTitle: exp.jobTitle,
-            startDate: exp.startDate,
-          };
-          if (exp.location) {
-            expData.location = exp.location;
-          }
-          if (exp.endDate) {
-            expData.endDate = exp.endDate;
-          }
-          if (exp.isCurrent !== undefined) {
-            expData.isCurrent = exp.isCurrent;
-          }
-          if (exp.description) {
-            expData.description = exp.description;
-          }
-          // Include ID if present (for updates)
-          if (exp.id) {
-            expData.id = exp.id;
-          }
-          return expData;
-        });
-      }
+      payload.experience = formData.experience.map((exp) => {
+        const expData: Record<string, unknown> = {
+          companyName: exp.companyName,
+          jobTitle: exp.jobTitle,
+          startDate: exp.startDate,
+        };
+        if (exp.location) {
+          expData.location = exp.location;
+        }
+        if (exp.endDate) {
+          expData.endDate = exp.endDate;
+        }
+        if (exp.isCurrent !== undefined) {
+          expData.isCurrent = exp.isCurrent;
+        }
+        if (exp.description) {
+          expData.description = exp.description;
+        }
+        // Include ID if present (for updates)
+        if (exp.id) {
+          expData.id = exp.id;
+        }
+        return expData;
+      });
 
       const url = "/api/candidate-profiles";
       const method = (profileId || profileDocumentId) ? "PUT" : "POST";

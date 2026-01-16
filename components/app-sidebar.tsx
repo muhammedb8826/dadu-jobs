@@ -42,9 +42,14 @@ const candidateNavMain = [
     icon: IconUser,
   },
   {
-    title: "Application",
-    url: "/dashboard/application",
+    title: "Candidate Profile",
+    url: "/dashboard/candidate-profile/complete",
     icon: IconFileText,
+  },
+  {
+    title: "Applications",
+    url: "/dashboard/application",
+    icon: IconBriefcase,
   },
 ]
 

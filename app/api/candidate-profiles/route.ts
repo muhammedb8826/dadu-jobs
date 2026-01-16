@@ -475,39 +475,43 @@ export async function PUT(request: NextRequest) {
       experience,
     } = body.data;
 
-    // 3. FETCH EXISTING SKILLS FROM PROFILE (Critical: Prevent losing existing relations)
-    // Strapi replaces the entire relation array on PUT, so we need to merge existing + new
+    // 3. FETCH EXISTING SKILLS ONLY IF NOT PROVIDED
+    // If skills are provided in the request (even empty), we treat that as the source of truth.
+    const skillsProvided = Array.isArray(skills);
     let existingSkillIds: (string | number)[] = [];
-    try {
-      const currentProfileResponse = await fetch(
-        `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate[skills][fields][0]=id&populate[skills][fields][1]=documentId`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-            ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
+
+    if (!skillsProvided) {
+      try {
+        const currentProfileResponse = await fetch(
+          `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate[skills][fields][0]=id&populate[skills][fields][1]=documentId`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
+              ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
+            },
+          }
+        );
+        
+        if (currentProfileResponse.ok) {
+          const currentProfile = await currentProfileResponse.json().catch(() => ({}));
+          const profileData = currentProfile?.data;
+          if (profileData?.skills && Array.isArray(profileData.skills)) {
+            existingSkillIds = profileData.skills
+              .map((skill: { id?: number; documentId?: string }) => skill.documentId || skill.id)
+              .filter((id: number | string | undefined): id is number | string => id !== undefined);
+          }
         }
-      );
-      
-      if (currentProfileResponse.ok) {
-        const currentProfile = await currentProfileResponse.json().catch(() => ({}));
-        const profileData = currentProfile?.data;
-        if (profileData?.skills && Array.isArray(profileData.skills)) {
-          existingSkillIds = profileData.skills
-            .map((skill: { id?: number; documentId?: string }) => skill.documentId || skill.id)
-            .filter((id: number | string | undefined): id is number | string => id !== undefined);
-        }
+      } catch (error) {
+        console.warn("Could not fetch existing skills, proceeding with new skills only:", error);
       }
-    } catch (error) {
-      console.warn("Could not fetch existing skills, proceeding with new skills only:", error);
     }
 
     // 4. PROCESS SKILLS (Sequential with await - ensures creation completes before profile update)
     // Use for...of to ensure we await each creation properly
-    // Initialize with existing skill IDs to preserve current relations
-    const finalSkillIds: (string | number)[] = [...existingSkillIds];
+    // If skills are provided, start from empty; otherwise, preserve existing relations
+    const finalSkillIds: (string | number)[] = skillsProvided ? [] : [...existingSkillIds];
 
     if (Array.isArray(skills)) {
       // Use for...of to ensure sequential processing and proper awaiting
@@ -631,7 +635,8 @@ export async function PUT(request: NextRequest) {
           ? (resume as { id?: number }).id || resume
           : resume
       }),
-      ...(uniqueSkillIds.length > 0 && { skills: uniqueSkillIds }),
+      // If skills were provided, include them even if empty to allow clearing relations
+      ...(skillsProvided && { skills: uniqueSkillIds }),
       // Remove IDs from components to avoid "Invalid key id" errors
       // Strapi will create new entries (this may replace existing ones)
       ...(education !== undefined && Array.isArray(education) && {
