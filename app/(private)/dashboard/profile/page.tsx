@@ -15,6 +15,7 @@ import {
 
 import { getSession } from "@/lib/auth/session";
 import { getStrapiURL } from "@/lib/strapi/client";
+import { isCandidate } from "@/lib/auth/rbac";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { getStrapiURL } from "@/lib/strapi/client"
+import { UserType } from "@/lib/types/user.types"
 
 function getInitials(firstName: string, email: string): string {
   if (firstName) {
@@ -300,13 +301,21 @@ export default async function DashboardPage() {
                   <CardTitle className="text-base">Profile</CardTitle>
                   <CardDescription>View your profile</CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-2">
                   <Button asChild variant="outline" className="w-full">
                     <Link href="/dashboard/profile">
                       <User className="mr-2 h-4 w-4" />
                       My Profile
                     </Link>
                   </Button>
+                  {session.userType === UserType.CANDIDATE && (
+                    <Button asChild variant="outline" className="w-full">
+                      <Link href="/dashboard/candidate-profile/complete">
+                        <FileText className="mr-2 h-4 w-4" />
+                        Complete Candidate Profile
+                      </Link>
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
 
