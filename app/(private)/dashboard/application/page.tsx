@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { StudentApplicationForm } from "@/components/student-application-form";
+import { isCandidate } from "@/lib/auth/rbac";
+import { UserType } from "@/lib/types/user.types";
 
 async function getStudentProfile(email: string, userId: string) {
   try {
@@ -79,6 +81,11 @@ export default async function ApplicationPage() {
 
   if (!session) {
     redirect("/login");
+  }
+
+  // Role-based access: Only candidates can access application page
+  if (!isCandidate(session)) {
+    redirect("/dashboard");
   }
 
   // Check if profile is complete

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { createSession } from "@/lib/auth/session";
+import { UserType } from "@/lib/types/user.types";
 
 type StrapiAuthResponse = {
   jwt: string;
@@ -12,6 +13,7 @@ type StrapiAuthResponse = {
     blocked?: boolean;
     firstName?: string;
     lastName?: string;
+    type?: string; // User type: EMPLOYER or CANDIDATE
     [key: string]: unknown;
   };
   error?: {
@@ -92,11 +94,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session with user data from Strapi including JWT token
+    // Fetch full user data to get the type field
+    // The auth/local endpoint may not return all fields, so we fetch the user separately
+    let userType: UserType | undefined;
+    try {
+      const userResponse = await fetch(`${strapiUrl}/api/users/${authData.user.id}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authData.jwt}`,
+        },
+      });
+
+      if (userResponse.ok) {
+        const userData = await userResponse.json().catch(() => ({}));
+        const type = userData?.type as string | undefined;
+        if (type === UserType.EMPLOYER || type === UserType.CANDIDATE) {
+          userType = type as UserType;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user type:", error);
+      // Continue without user type - it's optional
+    }
+
+    // Create session with user data from Strapi including JWT token and user type
     await createSession({
       userId: String(authData.user.id),
       email: authData.user.email,
       firstName: authData.user.firstName || authData.user.username || "",
+      userType: userType, // Store user type for role-based access control
       jwt: authData.jwt, // Store JWT for authenticated requests
     });
 

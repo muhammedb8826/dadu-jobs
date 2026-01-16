@@ -108,6 +108,12 @@ export default async function ProfilePage() {
     redirect("/login");
   }
 
+  // Role-based access: Only candidates can access student profile page
+  // Employers would have a different profile page
+  if (!isCandidate(session)) {
+    redirect("/dashboard");
+  }
+
   const user = {
     name: session.firstName || "User",
     email: session.email,

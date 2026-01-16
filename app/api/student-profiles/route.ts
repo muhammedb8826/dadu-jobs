@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { getSession } from "@/lib/auth/session";
+import { isCandidate, requireRole } from "@/lib/auth/rbac";
+import { UserType } from "@/lib/types/user.types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -10,6 +12,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
+      );
+    }
+
+    // Role-based access: Only candidates can create/update student profiles
+    if (!isCandidate(session)) {
+      return NextResponse.json(
+        { error: "Access denied. Only candidates can manage student profiles." },
+        { status: 403 }
       );
     }
 
@@ -445,6 +455,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 401 }
+      );
+    }
+
+    // Role-based access: Only candidates can view student profiles
+    if (!isCandidate(session)) {
+      return NextResponse.json(
+        { error: "Access denied. Only candidates can view student profiles." },
+        { status: 403 }
       );
     }
 

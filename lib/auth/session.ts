@@ -3,10 +3,13 @@ import { cookies } from "next/headers";
 const SESSION_COOKIE_NAME = "dadu_jobs_session";
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
+import { UserType } from "@/lib/types/user.types";
+
 export type SessionData = {
   userId: string;
   email: string;
   firstName: string;
+  userType?: UserType; // User type: EMPLOYER or CANDIDATE
   jwt?: string; // Store JWT token for authenticated Strapi requests
 };
 

@@ -37,9 +37,9 @@ export default async function PrivateLayout({
         } as React.CSSProperties
       }
     >
-      <AppSidebar variant="inset" user={user} />
+      <AppSidebar variant="inset" user={user} userType={session.userType} />
       <SidebarInset>
-        <SiteHeader title="Dashboard" />
+        <SiteHeader user={user} />
         {children}
       </SidebarInset>
     </SidebarProvider>

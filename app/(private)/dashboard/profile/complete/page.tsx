@@ -1,12 +1,18 @@
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { StudentProfileCompletionForm } from "@/components/student-profile-completion-form";
+import { isCandidate } from "@/lib/auth/rbac";
 
 export default async function CompleteProfilePage() {
   const session = await getSession();
 
   if (!session) {
     redirect("/login");
+  }
+
+  // Role-based access: Only candidates can complete student profile
+  if (!isCandidate(session)) {
+    redirect("/dashboard");
   }
 
   return (

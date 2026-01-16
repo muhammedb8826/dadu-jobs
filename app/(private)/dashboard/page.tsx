@@ -139,6 +139,10 @@ export default async function DashboardPage() {
     redirect("/login")
   }
 
+  // Role-based access: Dashboard content varies by user type
+  // Candidates see student profile/application dashboard
+  // Employers see job posting/management dashboard
+
   const user = {
     name: session.firstName || "User",
     email: session.email,
