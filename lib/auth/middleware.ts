@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
  */
 export async function isAuthenticated(request: NextRequest): Promise<boolean> {
   // Check session cookie
-  const sessionCookie = request.cookies.get("alumni_session");
+  const sessionCookie = request.cookies.get("dadu_jobs_session");
   
   if (!sessionCookie?.value) {
     return false;
@@ -23,7 +23,7 @@ export async function isAuthenticated(request: NextRequest): Promise<boolean> {
  * Get session data from request (client-side compatible)
  */
 export function getSessionFromRequest(request: NextRequest) {
-  const sessionCookie = request.cookies.get("alumni_session");
+  const sessionCookie = request.cookies.get("dadu_jobs_session");
   
   if (!sessionCookie?.value) {
     return null;

@@ -33,7 +33,7 @@ export interface StrapiGlobalResponse {
       id: number;
       cta?: Array<{
         id: number;
-        Label?: string;
+        label: string;
         url: string;
         icon?: StrapiIcon;
       }>;
@@ -68,12 +68,12 @@ export interface StrapiGlobalResponse {
           isExternal?: boolean;
         }>;
       }>;
-      button?: {
+      button?: Array<{
         id: number;
         title: string;
         url: string;
         isExternal?: boolean;
-      };
+      }>;
     };
     footer?: {
       id: number;
@@ -99,7 +99,7 @@ export interface StrapiGlobalResponse {
         address?: string;
         link?: Array<{
           id: number;
-          Label?: string;
+          label: string;
           url?: string;
           icon?: StrapiIcon;
         }>;

@@ -15,6 +15,17 @@ type HeaderProps = {
 export function Header({ data, topHeaderData, siteName }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
+  // Debug logging
+  if (process.env.NODE_ENV === "development") {
+    console.log("Header component - data:", {
+      hasLogo: !!data.logo,
+      logoUrl: data.logo?.url,
+      navLinksCount: data.navigationLinks.length,
+      navGroupsCount: data.navigationGroups.length,
+      hasCtaButton: !!data.ctaButton,
+    });
+  }
+
   // Prevent body scroll when menu is open
   useEffect(() => {
     if (isMenuOpen) {
@@ -27,14 +38,15 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
     };
   }, [isMenuOpen]);
 
+  // Always render header, even if empty
   return (
     <>
-      <header className="bg-primary text-primary-foreground sticky top-0 z-50 shadow-md">
+      <header className="bg-primary text-primary-foreground sticky top-0 z-50 shadow-md" data-testid="main-header">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            {/* Left: Logo */}
+            {/* Left: Logo or Site Name */}
             <Link href="/" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-              {data.logo && (
+              {data.logo ? (
                 <div className="relative h-12 w-auto shrink-0">
                   <Image
                     src={data.logo.url}
@@ -45,12 +57,14 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
                     sizes="192px"
                   />
                 </div>
+              ) : (
+                <span className="text-lg font-semibold">{siteName}</span>
               )}
             </Link>
 
             {/* Desktop Navigation Links */}
             <nav className="hidden md:flex items-center gap-6">
-              {data.navigationLinks.map((link) => (
+              {data.navigationLinks && data.navigationLinks.length > 0 && data.navigationLinks.map((link) => (
                 <Link
                   key={`${link.label}-${link.url}`}
                   href={link.url}
@@ -62,7 +76,7 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
                 </Link>
               ))}
 
-              {data.navigationGroups.map((group) => (
+              {data.navigationGroups && data.navigationGroups.length > 0 && data.navigationGroups.map((group) => (
                 <div key={group.label} className="relative group">
                   <button
                     className="text-sm font-medium whitespace-nowrap text-white hover:text-(--brand-accent) transition-colors flex items-center gap-1"

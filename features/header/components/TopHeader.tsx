@@ -17,9 +17,15 @@ const socialIcons: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 export function TopHeader({ data }: TopHeaderProps) {
-  console.log(data);
+  console.log("TopHeader data:", data);
+  
+  // Don't render if no data
+  if (!data.email && !data.phone && data.socialLinks.length === 0 && data.buttons.length === 0) {
+    return null;
+  }
+  
   return (
-    <div className="hidden md:block border-b border-border bg-white text-(--brand-black)">
+    <div className="border-b border-border bg-white text-(--brand-black)">
       <div className="container mx-auto px-4">
         <div className="flex h-10 items-center justify-between text-sm">
           {/* Left: Contact Info */}
