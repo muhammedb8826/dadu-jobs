@@ -67,9 +67,14 @@ export function Footer({ data, siteName, siteDescription }: FooterProps) {
           <div>
             <h4 className="text-lg font-semibold text-white">{data.quickLinks.title || "Quick Links"}</h4>
             <ul className="mt-4 space-y-2 text-sm text-white/80">
-              {data.quickLinks.links.map((link) => {
-                const href = normalizeHref(link.url);
-                const isInternal = href.startsWith("/");
+              {data.quickLinks.links && data.quickLinks.links.length > 0 ? (
+                data.quickLinks.links.map((link) => {
+                  // Normalize URL - if it doesn't start with /, add it for internal links
+                  const normalizedUrl = link.url && !link.url.startsWith("/") && !link.url.startsWith("http") 
+                    ? `/${link.url}` 
+                    : link.url;
+                  const href = normalizeHref(normalizedUrl);
+                  const isInternal = href.startsWith("/") || (!href.startsWith("http") && !href.startsWith("mailto") && !href.startsWith("tel"));
 
                 const content = (
                   <span className="flex items-center gap-2 text-white/80">
@@ -103,8 +108,8 @@ export function Footer({ data, siteName, siteDescription }: FooterProps) {
                     </a>
                   </li>
                 );
-              })}
-              {data.quickLinks.links.length === 0 && (
+                })
+              ) : (
                 <li className="text-white/60">Links coming soon.</li>
               )}
             </ul>

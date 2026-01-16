@@ -22,7 +22,7 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
       logoUrl: data.logo?.url,
       navLinksCount: data.navigationLinks.length,
       navGroupsCount: data.navigationGroups.length,
-      hasCtaButton: !!data.ctaButton,
+      buttonsCount: data.buttons?.length || 0,
     });
   }
 
@@ -116,17 +116,29 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
               ))}
             </nav>
 
-            {/* Desktop CTA Button */}
-            {data.ctaButton && (
-              <div className="hidden md:flex">
-                <Link
-                  href={data.ctaButton.url}
-                  target={data.ctaButton.isExternal ? "_blank" : undefined}
-                  rel={data.ctaButton.isExternal ? "noopener noreferrer" : undefined}
-                  className="rounded-md bg-(--brand-accent) px-4 py-2 text-sm font-semibold text-[#0c0d0f] transition hover:bg-(--brand-accent)/90"
-                >
-                  {data.ctaButton.label}
-                </Link>
+            {/* Desktop Header Buttons */}
+            {data.buttons && data.buttons.length > 0 && (
+              <div className="hidden md:flex items-center gap-2">
+                {data.buttons.map((button, index) => {
+                  const normalizedUrl = button.url && !button.url.startsWith("/") && !button.url.startsWith("http") 
+                    ? `/${button.url}` 
+                    : button.url;
+                  return (
+                    <Link
+                      key={`header-button-${button.label}-${index}`}
+                      href={normalizedUrl}
+                      target={button.isExternal ? "_blank" : undefined}
+                      rel={button.isExternal ? "noopener noreferrer" : undefined}
+                      className={`px-4 py-2 text-sm font-semibold transition ${
+                        index === data.buttons.length - 1
+                          ? "rounded-md bg-(--brand-accent) text-[#0c0d0f] hover:bg-(--brand-accent)/90"
+                          : "rounded-md border border-white/20 text-white hover:bg-white/10"
+                      }`}
+                    >
+                      {button.label}
+                    </Link>
+                  );
+                })}
               </div>
             )}
 
@@ -246,18 +258,30 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
                 )}
               </div>
 
-              {/* Header CTA button */}
-              {data.ctaButton && (
-                <div className="px-6 pb-4">
-                  <Link
-                    href={data.ctaButton.url}
-                    target={data.ctaButton.isExternal ? "_blank" : undefined}
-                    rel={data.ctaButton.isExternal ? "noopener noreferrer" : undefined}
-                    className="block w-full rounded-lg bg-(--brand-accent) px-4 py-3 text-center text-sm font-semibold text-[#0c0d0f] transition hover:bg-(--brand-accent)/90"
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    {data.ctaButton.label}
-                  </Link>
+              {/* Header Buttons */}
+              {data.buttons && data.buttons.length > 0 && (
+                <div className="px-6 pb-4 space-y-2">
+                  {data.buttons.map((button, index) => {
+                    const normalizedUrl = button.url && !button.url.startsWith("/") && !button.url.startsWith("http") 
+                      ? `/${button.url}` 
+                      : button.url;
+                    return (
+                      <Link
+                        key={`mobile-header-button-${button.label}-${index}`}
+                        href={normalizedUrl}
+                        target={button.isExternal ? "_blank" : undefined}
+                        rel={button.isExternal ? "noopener noreferrer" : undefined}
+                        className={`block w-full rounded-lg px-4 py-3 text-center text-sm font-semibold transition ${
+                          index === data.buttons.length - 1
+                            ? "bg-(--brand-accent) text-[#0c0d0f] hover:bg-(--brand-accent)/90"
+                            : "bg-white/10 text-white hover:bg-white/20"
+                        }`}
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        {button.label}
+                      </Link>
+                    );
+                  })}
                 </div>
               )}
 

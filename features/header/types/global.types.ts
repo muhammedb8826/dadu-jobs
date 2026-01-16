@@ -154,11 +154,11 @@ export interface GlobalData {
         isExternal?: boolean;
       }>;
     }>;
-    ctaButton?: {
+    buttons: Array<{
       label: string;
       url: string;
       isExternal?: boolean;
-    };
+    }>;
   };
   footer: {
     copyRight?: string;

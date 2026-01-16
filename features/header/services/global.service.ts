@@ -15,7 +15,7 @@ export const EMPTY_GLOBAL_DATA: GlobalData = {
     logo: undefined,
     navigationLinks: [],
     navigationGroups: [],
-    ctaButton: undefined,
+    buttons: [],
   },
   footer: {
     copyRight: "© DADU Admission. All rights reserved.",
@@ -51,12 +51,14 @@ const GLOBAL_POPULATE = {
       },
       quickLinks: {
         populate: {
-          populate: "*",
+          link: true,
         },
       },
       contactInformation: {
         populate: {
-          populate: "*",
+          link: {
+            populate: "*",
+          },
         },
       },
       followUs: {
@@ -80,6 +82,8 @@ export async function fetchGlobalData(): Promise<GlobalData> {
     });
 
     const data = response.data;
+
+    console.log("Fetched global data:", data);
 
     return {
       siteName: data.siteName,
@@ -153,14 +157,12 @@ export async function fetchGlobalData(): Promise<GlobalData> {
                 isExternal: link.isExternal,
               })) || [],
           })) || [],
-        ctaButton:
-          data.header?.button && data.header.button.length > 0
-            ? {
-                label: data.header.button[0].title,
-                url: data.header.button[0].url,
-                isExternal: data.header.button[0].isExternal,
-              }
-            : undefined,
+        buttons:
+          data.header?.button?.map((btn) => ({
+            label: btn.title || "",
+            url: btn.url || "#",
+            isExternal: btn.isExternal || false,
+          })) || [],
       },
       footer: {
         copyRight:
