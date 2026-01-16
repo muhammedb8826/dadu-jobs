@@ -513,6 +513,8 @@ export async function PUT(request: NextRequest) {
     // If skills are provided, start from empty; otherwise, preserve existing relations
     const finalSkillIds: (string | number)[] = skillsProvided ? [] : [...existingSkillIds];
 
+    const failedSkills: string[] = [];
+
     if (Array.isArray(skills)) {
       // Use for...of to ensure sequential processing and proper awaiting
       for (const item of skills) {
@@ -549,8 +551,8 @@ export async function PUT(request: NextRequest) {
                   method: "GET",
                   headers: {
                     "Content-Type": "application/json",
-                    ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-                    ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
+                    ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+                    ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
                   },
                 }
               );
@@ -573,8 +575,8 @@ export async function PUT(request: NextRequest) {
                   method: "POST",
                   headers: {
                     "Content-Type": "application/json",
-                    ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-                    ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
+                    ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+                    ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
                   },
                   body: JSON.stringify({
                     data: {
@@ -603,11 +605,15 @@ export async function PUT(request: NextRequest) {
                 }
               } else {
                 console.error(`Skill processing failed for: ${skill.skillName}`);
+                failedSkills.push(`${skill.skillName} (${skill.level})`);
               }
             } catch (error) {
               console.error("Skill error:", error);
               // Continue with other skills even if one fails (error resilience)
+              failedSkills.push(`${skill.skillName} (${skill.level})`);
             }
+          } else {
+            failedSkills.push(skill.skillName ? `${skill.skillName} (missing level)` : "Unnamed skill");
           }
         }
       }
@@ -615,6 +621,13 @@ export async function PUT(request: NextRequest) {
 
     // Remove duplicates (in case of any overlap) - ensure unique IDs
     const uniqueSkillIds = [...new Set(finalSkillIds)];
+
+    if (skillsProvided && failedSkills.length > 0) {
+      return NextResponse.json(
+        { error: `Failed to save skills: ${failedSkills.join(", ")}` },
+        { status: 400 }
+      );
+    }
 
     // 5. BUILD THE PAYLOAD
     // Important: We do NOT include 'id' or 'documentId' inside this object
