@@ -61,6 +61,16 @@ const employerNavMain = [
     icon: IconDashboard,
   },
   {
+    title: "My Profile",
+    url: "/dashboard/profile",
+    icon: IconUser,
+  },
+  {
+    title: "Employer Profile",
+    url: "/dashboard/employer-profile/complete",
+    icon: IconFileText,
+  },
+  {
     title: "Job Postings",
     url: "/dashboard/jobs",
     icon: IconBriefcase,
