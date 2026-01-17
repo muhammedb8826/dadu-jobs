@@ -54,6 +54,7 @@ export function EmployerProfileCompletionForm() {
   const [profileId, setProfileId] = useState<number | null>(null);
   const [profileDocumentId, setProfileDocumentId] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<number | null>(null);
+  const [companyDocumentId, setCompanyDocumentId] = useState<string | null>(null);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [companyLogoUrl, setCompanyLogoUrl] = useState<string | null>(null);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
@@ -111,8 +112,14 @@ export function EmployerProfileCompletionForm() {
               })) || [],
             });
 
-            if (profile.company?.id) {
-              setCompanyId(profile.company.id);
+            // Set company IDs if company exists
+            if (profile.company) {
+              if (profile.company.id) {
+                setCompanyId(profile.company.id);
+              }
+              if (profile.company.documentId) {
+                setCompanyDocumentId(profile.company.documentId);
+              }
             }
 
             if (profile.profilePicture && strapiUrl) {
@@ -290,11 +297,17 @@ export function EmployerProfileCompletionForm() {
         companyData.socialLinks = [];
       }
 
-      // Save company
+      // Save company - use documentId if available (Strapi 5), otherwise use id
       const companyUrl = "/api/companies";
-      const companyMethod = companyId ? "PUT" : "POST";
-      const companyBody = companyId
-        ? { data: { id: companyId, ...companyData } }
+      const companyMethod = (companyId || companyDocumentId) ? "PUT" : "POST";
+      const companyBody = (companyId || companyDocumentId)
+        ? { 
+            data: { 
+              ...(companyDocumentId ? { documentId: companyDocumentId } : {}),
+              ...(companyId ? { id: companyId } : {}),
+              ...companyData 
+            } 
+          }
         : { data: companyData };
 
       const companyResponse = await fetch(companyUrl, {
@@ -331,17 +344,25 @@ export function EmployerProfileCompletionForm() {
         throw new Error(errorMessage);
       }
 
-      // Get company ID from response
+      // Get company ID from response - handle both id (number) and documentId (string) for Strapi 5
+      // This handles both new company creation (201) and existing company (200) responses
       const savedCompany = (companyResult as { data?: { data?: { id?: number; documentId?: string }; id?: number; documentId?: string } })?.data?.data || 
                           (companyResult as { data?: { id?: number; documentId?: string } })?.data;
+      
       if (savedCompany && typeof savedCompany === "object") {
-        const newCompanyId = savedCompany.id || savedCompany.documentId;
-        if (newCompanyId) {
-          const finalCompanyId = typeof newCompanyId === "number" ? newCompanyId : null;
-          if (finalCompanyId) {
-            setCompanyId(finalCompanyId);
-          }
+        // Store both id and documentId for maximum compatibility
+        // Prefer documentId for Strapi 5 relations
+        if (savedCompany.id && typeof savedCompany.id === "number") {
+          setCompanyId(savedCompany.id);
         }
+        if (savedCompany.documentId && typeof savedCompany.documentId === "string") {
+          setCompanyDocumentId(savedCompany.documentId);
+        }
+      }
+
+      // Log if using existing company (for debugging)
+      if (companyResponse.status === 200 && (companyResult as { message?: string })?.message) {
+        console.log("Using existing company:", (companyResult as { message: string }).message);
       }
 
       setCompanySaveSuccess(true);
@@ -365,8 +386,11 @@ export function EmployerProfileCompletionForm() {
         throw new Error("Full name is required");
       }
 
-      // Company ID is optional - profile can be saved without company
-      // but if company exists, we should use it
+      // Check if company was saved - warn if not
+      if (!companyDocumentId && !companyId && formData.companyName.trim()) {
+        console.warn("Company name is provided but company hasn't been saved yet. Please save the company first.");
+        // Don't throw error, but warn user
+      }
 
       // Save profile with company ID reference (if company exists)
       const profilePayload: Record<string, unknown> = {
@@ -376,9 +400,16 @@ export function EmployerProfileCompletionForm() {
         bio: formData.bio.trim(),
       };
 
-      // Only include company if it exists
-      if (companyId) {
+      // Only include company if it exists - prefer documentId for Strapi 5, fall back to id
+      // Always include company field to ensure relation is set (even if null)
+      if (companyDocumentId) {
+        profilePayload.company = companyDocumentId;
+        console.log("Linking profile to company with documentId:", companyDocumentId);
+      } else if (companyId) {
         profilePayload.company = companyId;
+        console.log("Linking profile to company with id:", companyId);
+      } else {
+        console.warn("No company ID available - profile will be saved without company relation");
       }
 
       if (formData.profilePicture) {
@@ -672,7 +703,7 @@ export function EmployerProfileCompletionForm() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="I(1-10)">I(1-10)</SelectItem>
-                  <SelectItem value="II(11-50)">II(11-50)</SelectItem>
+                  <SelectItem value="II(1-50)">II(1-50)</SelectItem>
                   <SelectItem value="III(51-200)">III(51-200)</SelectItem>
                   <SelectItem value="IV(201-500)">IV(201-500)</SelectItem>
                   <SelectItem value="V(500+)">V(500+)</SelectItem>

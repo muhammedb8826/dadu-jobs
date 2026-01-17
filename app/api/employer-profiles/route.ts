@@ -28,9 +28,15 @@ export async function GET(request: NextRequest) {
     const myProfile = searchParams.get("myProfile") === "true";
 
     // Build populate query
-    // Use populate=* for top level to get all relations
-    // Then filter user fields to avoid reverse relation issues
-    const populateQuery = "populate=*&populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
+    // Avoid populate=* to prevent media `related` validation errors in Strapi.
+    // Explicitly populate needed relations and limit media fields.
+    // First populate company, then its nested fields (logo, socialLinks)
+    const populateQuery =
+      "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=name&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&" +
+      "populate[company][fields][0]=id&populate[company][fields][1]=documentId&populate[company][fields][2]=name&populate[company][fields][3]=website&populate[company][fields][4]=industry&populate[company][fields][5]=companySize&populate[company][fields][6]=location&populate[company][fields][7]=description&populate[company][fields][8]=tagline&populate[company][fields][9]=slug&" +
+      "populate[company][populate][logo][fields][0]=id&populate[company][populate][logo][fields][1]=url&populate[company][populate][logo][fields][2]=name&populate[company][populate][logo][fields][3]=alternativeText&populate[company][populate][logo][fields][4]=formats&" +
+      "populate[company][populate][socialLinks]=*&" +
+      "populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
 
     let url: string;
     
@@ -166,9 +172,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Company should be provided as an ID (number) from the frontend
+    // Company should be provided as an ID (number) or documentId (string) from the frontend
     // The company is saved separately via /api/companies endpoint
-    const companyId = typeof company === "number" ? company : null;
+    // Strapi 5 supports both id (number) and documentId (string) for relations
+    const companyIdentifier = company !== null && company !== undefined 
+      ? (typeof company === "number" ? company : typeof company === "string" ? company : null)
+      : null;
 
     // Prepare profile data
     const profileData: Record<string, unknown> = {
@@ -180,7 +189,10 @@ export async function POST(request: NextRequest) {
 
     if (jobTitle) profileData.jobTitle = jobTitle;
     if (profilePicture) profileData.profilePicture = profilePicture;
-    if (companyId) profileData.company = companyId;
+    // Set company relation - Strapi will handle both id and documentId
+    if (companyIdentifier) {
+      profileData.company = companyIdentifier;
+    }
 
     let response: Response;
     let result: Record<string, unknown> = {};
@@ -344,12 +356,23 @@ export async function PUT(request: NextRequest) {
     if (bio !== undefined) updateData.bio = bio;
     if (profilePicture !== undefined) updateData.profilePicture = profilePicture;
 
-    // Company should be provided as an ID (number) from the frontend
+    // Company should be provided as an ID (number) or documentId (string) from the frontend
     // The company is saved separately via /api/companies endpoint
+    // Strapi 5 supports both id (number) and documentId (string) for relations
+    // Always set company if provided, even if null (to clear the relation)
     if (company !== undefined) {
-      const companyId = typeof company === "number" ? company : null;
-      if (companyId) {
-        updateData.company = companyId;
+      if (company !== null) {
+        const companyIdentifier = typeof company === "number" 
+          ? company 
+          : typeof company === "string" 
+          ? company 
+          : null;
+        if (companyIdentifier) {
+          updateData.company = companyIdentifier;
+        }
+      } else {
+        // Explicitly set to null to clear the relation
+        updateData.company = null;
       }
     }
 
