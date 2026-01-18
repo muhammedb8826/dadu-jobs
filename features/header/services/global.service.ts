@@ -2,6 +2,21 @@ import { strapiFetch, getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { StrapiGlobalResponse, GlobalData } from "../types/global.types";
 
+const normalizeInternalUrl = (url?: string) => {
+  if (!url || url === "#") return url;
+  const lowerUrl = url.toLowerCase();
+  if (
+    url.startsWith("/") ||
+    lowerUrl.startsWith("http://") ||
+    lowerUrl.startsWith("https://") ||
+    lowerUrl.startsWith("mailto:") ||
+    lowerUrl.startsWith("tel:")
+  ) {
+    return url;
+  }
+  return `/${url}`;
+};
+
 export const EMPTY_GLOBAL_DATA: GlobalData = {
   siteName: "DADU Jobs",
   siteDescription: "",
@@ -122,15 +137,18 @@ export async function fetchGlobalData(): Promise<GlobalData> {
             };
           }) || [],
         buttons:
-          data.topHeader?.button?.map((btn) => ({
-            label: btn.title || "",
-            url: btn.url || "#",
-            // Mark primary button (usually the last one or one with specific keywords)
-            isPrimary:
-              btn.title?.toLowerCase().includes("register") ||
-              btn.title?.toLowerCase().includes("apply") ||
-              false,
-          })) || [],
+          data.topHeader?.button?.map((btn) => {
+            const normalizedUrl = normalizeInternalUrl(btn.url) || "#";
+            return {
+              label: btn.title || "",
+              url: normalizedUrl,
+              // Mark primary button (usually the last one or one with specific keywords)
+              isPrimary:
+                btn.title?.toLowerCase().includes("register") ||
+                btn.title?.toLowerCase().includes("apply") ||
+                false,
+            };
+          }) || [],
       },
       header: {
         logo: (() => {
@@ -146,8 +164,8 @@ export async function fetchGlobalData(): Promise<GlobalData> {
           ...(data.header?.menu?.map((item) => {
             // Normalize internal URLs to start with / to make them absolute
             let normalizedUrl = item.url || "#";
-            if (!item.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
-              normalizedUrl = `/${normalizedUrl}`;
+            if (!item.isExternal) {
+              normalizedUrl = normalizeInternalUrl(normalizedUrl) || "#";
             }
             return {
               label: item.title,
@@ -163,8 +181,8 @@ export async function fetchGlobalData(): Promise<GlobalData> {
               group.subMenu?.map((link) => {
                 // Normalize internal URLs to start with / to make them absolute
                 let normalizedUrl = link.url || "#";
-                if (!link.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
-                  normalizedUrl = `/${normalizedUrl}`;
+                if (!link.isExternal) {
+                  normalizedUrl = normalizeInternalUrl(normalizedUrl) || "#";
                 }
                 return {
                   label: link.title,
@@ -177,8 +195,8 @@ export async function fetchGlobalData(): Promise<GlobalData> {
           data.header?.button?.map((btn) => {
             // Normalize internal URLs to start with / to make them absolute
             let normalizedUrl = btn.url || "#";
-            if (!btn.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
-              normalizedUrl = `/${normalizedUrl}`;
+            if (!btn.isExternal) {
+              normalizedUrl = normalizeInternalUrl(normalizedUrl) || "#";
             }
             return {
               label: btn.title || "",
