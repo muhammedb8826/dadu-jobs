@@ -37,11 +37,6 @@ const candidateNavMain = [
     icon: IconDashboard,
   },
   {
-    title: "My Profile",
-    url: "/dashboard/profile",
-    icon: IconUser,
-  },
-  {
     title: "Candidate Profile",
     url: "/dashboard/candidate-profile/complete",
     icon: IconFileText,
@@ -59,11 +54,6 @@ const employerNavMain = [
     title: "Dashboard",
     url: "/dashboard",
     icon: IconDashboard,
-  },
-  {
-    title: "My Profile",
-    url: "/dashboard/profile",
-    icon: IconUser,
   },
   {
     title: "Employer Profile",
