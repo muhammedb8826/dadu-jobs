@@ -17,6 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import type { Category, JobFormData } from "../types/job.types";
 
 export function JobPostingForm({ jobId }: { jobId?: number | string }) {
@@ -146,19 +147,29 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
     try {
       // Validate required fields
       if (!formData.title.trim()) {
-        throw new Error("Job title is required");
+        toast.error("Job title is required");
+        setIsSaving(false);
+        return;
       }
       if (!formData.description.trim()) {
-        throw new Error("Job description is required");
+        toast.error("Job description is required");
+        setIsSaving(false);
+        return;
       }
       if (!formData.deadline) {
-        throw new Error("Application deadline is required");
+        toast.error("Application deadline is required");
+        setIsSaving(false);
+        return;
       }
       if (!formData.jobCode.trim()) {
-        throw new Error("Job code is required");
+        toast.error("Job code is required");
+        setIsSaving(false);
+        return;
       }
       if (formData.categories.length === 0) {
-        throw new Error("At least one category is required");
+        toast.error("At least one category is required");
+        setIsSaving(false);
+        return;
       }
 
       // Prepare payload
@@ -235,9 +246,13 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
           errorMessage = result.message;
         }
         
-        throw new Error(errorMessage);
+        toast.error(errorMessage);
+        setSubmitError(errorMessage);
+        setIsSaving(false);
+        return;
       }
 
+      toast.success(jobId ? "Job updated successfully!" : "Job created successfully!");
       setSubmitSuccess(true);
       setTimeout(() => {
         router.push("/dashboard/jobs");
@@ -245,7 +260,9 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
       }, 2000);
     } catch (error) {
       console.error("Error saving job:", error);
-      setSubmitError(error instanceof Error ? error.message : "Failed to save job posting");
+      const errorMessage = error instanceof Error ? error.message : "Failed to save job posting";
+      toast.error(errorMessage);
+      setSubmitError(errorMessage);
     } finally {
       setIsSaving(false);
     }
