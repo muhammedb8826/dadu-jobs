@@ -3,13 +3,21 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
-import { Mail, Phone, X } from "lucide-react";
+import { Mail, Phone, X, Facebook, Twitter, Linkedin, Youtube, Send } from "lucide-react";
 import { GlobalData } from "../types/global.types";
 
 type HeaderProps = {
   data: GlobalData["header"];
   topHeaderData: GlobalData["topHeader"];
   siteName: string;
+};
+
+const socialIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  facebook: Facebook,
+  twitter: Twitter,
+  linkedin: Linkedin,
+  youtube: Youtube,
+  telegram: Send,
 };
 
 export function Header({ data, topHeaderData, siteName }: HeaderProps) {
@@ -256,6 +264,48 @@ export function Header({ data, topHeaderData, siteName }: HeaderProps) {
                       <Phone className="h-5 w-5" />
                     <span>{topHeaderData.phone}</span>
                   </a>
+                )}
+
+                {/* Social Media Links */}
+                {topHeaderData.socialLinks && topHeaderData.socialLinks.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/10">
+                    <div className="flex items-center gap-4">
+                      {topHeaderData.socialLinks.map((link, index) => {
+                        // Use SVG from Strapi if available, otherwise fall back to lucide-react icons
+                        if (link.iconData) {
+                          return (
+                            <a
+                              key={link.platform || index}
+                              href={link.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-white/80 transition-colors hover:text-(--brand-accent)"
+                              aria-label={link.platform}
+                              onClick={() => setIsMenuOpen(false)}
+                              dangerouslySetInnerHTML={{
+                                __html: `<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">${link.iconData}</svg>`,
+                              }}
+                            />
+                          );
+                        }
+                        const Icon = socialIcons[link.platform.toLowerCase()];
+                        if (!Icon) return null;
+                        return (
+                          <a
+                            key={link.platform || index}
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-white/80 transition-colors hover:text-(--brand-accent)"
+                            aria-label={link.platform}
+                            onClick={() => setIsMenuOpen(false)}
+                          >
+                            <Icon className="h-5 w-5" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
 

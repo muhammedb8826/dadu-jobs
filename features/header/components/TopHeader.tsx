@@ -25,7 +25,7 @@ export function TopHeader({ data }: TopHeaderProps) {
   }
   
   return (
-    <div className="border-b border-border bg-white text-(--brand-black)">
+    <div className="hidden md:block border-b border-border bg-white text-(--brand-black)">
       <div className="container mx-auto px-4">
         <div className="flex h-10 items-center justify-between text-sm">
           {/* Left: Contact Info */}
