@@ -134,6 +134,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Find the employer profile to link it to the company
+    const userId = Number(session.userId);
+    let employerProfileId: string | number | null = null;
+    
+    if (userId) {
+      const profileRes = await fetch(
+        `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&pagination[limit]=1`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+            ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
+          },
+        }
+      );
+      const profileData = await profileRes.json().catch(() => ({}));
+      // Prefer documentId for Strapi 5, fallback to id
+      employerProfileId = profileData?.data?.[0]?.documentId || profileData?.data?.[0]?.id || null;
+    }
+
     // Check if company with same name already exists (Upsert logic)
     // This allows employers to use existing companies or create new ones
     const existingCompanyCheck = await fetch(
@@ -150,9 +170,51 @@ export async function POST(request: NextRequest) {
     if (existingCompanyCheck.ok) {
       const existingResult = await existingCompanyCheck.json().catch(() => ({}));
       if (existingResult?.data && Array.isArray(existingResult.data) && existingResult.data.length > 0) {
-        // Company already exists - return it (upsert behavior)
-        // This allows the employer to link to an existing company
+        // Company already exists - link employer profile and return it (upsert behavior)
         const existingCompany = existingResult.data[0];
+        const companyIdentifier = existingCompany.documentId || existingCompany.id;
+        
+        // Link employer profile to existing company if not already linked
+        if (employerProfileId && companyIdentifier) {
+          // Check if employer is already linked
+          const currentCompanyRes = await fetch(
+            `${strapiUrl}/api/companies/${companyIdentifier}?populate[employers][fields][0]=id&populate[employers][fields][1]=documentId`,
+            {
+              headers: {
+                "Content-Type": "application/json",
+                ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+                ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
+              },
+            }
+          );
+          
+          const currentCompanyData = await currentCompanyRes.json().catch(() => ({}));
+          const currentEmployers = currentCompanyData?.data?.employers || [];
+          const isAlreadyLinked = currentEmployers.some(
+            (emp: { id?: number; documentId?: string }) => 
+              emp.documentId === employerProfileId || emp.id === employerProfileId
+          );
+          
+          // Only update if not already linked
+          if (!isAlreadyLinked) {
+            const updateData: Record<string, unknown> = {
+              employers: [...currentEmployers.map((emp: { id?: number; documentId?: string }) => 
+                emp.documentId || emp.id
+              ), employerProfileId],
+            };
+            
+            await fetch(`${strapiUrl}/api/companies/${companyIdentifier}`, {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
+                ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
+              },
+              body: JSON.stringify({ data: updateData }),
+            });
+          }
+        }
+        
         return NextResponse.json(
           { 
             data: existingCompany,
@@ -209,9 +271,13 @@ export async function POST(request: NextRequest) {
     };
 
     // Link owner if userId is available
-    const userId = Number(session.userId);
     if (userId) {
       companyData.owner = userId;
+    }
+
+    // Link employer profile to company (oneToMany relation: employers)
+    if (employerProfileId) {
+      companyData.employers = [employerProfileId];
     }
 
     if (website) companyData.website = website;
@@ -370,14 +436,37 @@ export async function PUT(request: NextRequest) {
     }
 
     // --- 3. ESTABLISH RELATIONSHIP ---
-    // Link to the Employer Profile (Many-to-Many relation)
+    // Link to the Employer Profile (oneToMany relation: employers)
     // The Company has an 'employers' field (plural) that is a relation to Employer Profiles
     if (employerProfileId) {
-      // For many-to-many or one-to-many relations, we might need to use connect/disconnect
-      // But first, let's try setting it directly - Strapi 5 should handle it
-      // If the field is 'employers' (plural), we might need to set it as an array
-      // Check if employer is already linked, if not, add it
-      updateData.employers = [employerProfileId];
+      // Check if employer is already linked to this company
+      const currentCompanyRes = await fetch(
+        `${strapiUrl}/api/companies/${targetIdentifier}?populate[employers][fields][0]=id&populate[employers][fields][1]=documentId`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+            ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
+          },
+        }
+      );
+      
+      const currentCompanyData = await currentCompanyRes.json().catch(() => ({}));
+      const currentEmployers = currentCompanyData?.data?.employers || [];
+      const isAlreadyLinked = currentEmployers.some(
+        (emp: { id?: number; documentId?: string }) => 
+          emp.documentId === employerProfileId || emp.id === employerProfileId
+      );
+      
+      // Only update if not already linked - append to existing employers
+      if (!isAlreadyLinked) {
+        updateData.employers = [
+          ...currentEmployers.map((emp: { id?: number; documentId?: string }) => 
+            emp.documentId || emp.id
+          ),
+          employerProfileId
+        ];
+      }
     }
 
     // --- 4. SLUG: Update slug if name changed ---
