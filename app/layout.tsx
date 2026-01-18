@@ -56,9 +56,17 @@ export async function generateMetadata(): Promise<Metadata> {
     global.data?.siteDescription ||
     "Jobs";
 
-  const faviconUrl = global.data?.favicon?.url
-    ? new URL(global.data.favicon.url, getStrapiURL()).toString()
-    : undefined;
+  let faviconUrl: string | undefined;
+  if (global.data?.favicon?.url) {
+    try {
+      const baseUrl = getStrapiURL();
+      if (baseUrl) {
+        faviconUrl = new URL(global.data.favicon.url, baseUrl).toString();
+      }
+    } catch (error) {
+      console.warn("Failed to build favicon URL:", error);
+    }
+  }
 
   return {
     title: siteName,
