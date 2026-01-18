@@ -13,6 +13,9 @@ export type Job = {
   isActive: boolean;
   experience: string;
   approvalStatus: string;
+  publishedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   salary?: {
     min?: number;
     max?: number;

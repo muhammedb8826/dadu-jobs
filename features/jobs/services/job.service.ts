@@ -1,8 +1,9 @@
 import { getStrapiURL } from "@/lib/strapi/client";
+import { fetchJobBySlug } from "../api/job.api";
 import type { Job } from "../types/job.types";
 
 /**
- * Get jobs for public listing (approved jobs only)
+ * Get jobs for public listing (approved and active jobs only)
  */
 export async function getPublicJobs(): Promise<Job[]> {
   try {
@@ -14,7 +15,9 @@ export async function getPublicJobs(): Promise<Job[]> {
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     // Populate categories and company with only needed fields (not * to avoid invalid relations)
     const populateQuery = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company][fields][0]=id&populate[company][fields][1]=name&populate[company][fields][2]=slug";
-    const url = `${strapiUrl}/api/jobs?filters[approvalStatus][$eq]=Approved&${populateQuery}`;
+    // Filter for approved and active jobs only using $and to combine filters
+    // Set a high limit to fetch all jobs (adjust if you have more than 1000 jobs)
+    const url = `${strapiUrl}/api/jobs?filters[$and][0][approvalStatus][$eq]=Approved&filters[$and][1][isActive][$eq]=true&pagination[limit]=1000&${populateQuery}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -26,6 +29,8 @@ export async function getPublicJobs(): Promise<Job[]> {
     });
 
     if (!response.ok) {
+      const errorText = await response.text().catch(() => "Unknown error");
+      console.error("getPublicJobs: Response not OK. Status:", response.status, "Error:", errorText);
       return [];
     }
 
@@ -53,9 +58,6 @@ export async function getJobs(userId: number): Promise<Job[]> {
     const populateQuery = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company][fields][0]=id&populate[company][fields][1]=name&populate[company][fields][2]=slug";
     const url = `${strapiUrl}/api/jobs?filters[user][id][$eq]=${userId}&${populateQuery}`;
 
-    console.log("getJobs: Fetching from URL:", url);
-    console.log("getJobs: User ID:", userId);
-
     const response = await fetch(url, {
       method: "GET",
       headers: {
@@ -72,13 +74,22 @@ export async function getJobs(userId: number): Promise<Job[]> {
     }
 
     const result = await response.json();
-    console.log("getJobs: Response data:", result);
-    console.log("getJobs: Jobs array:", result?.data);
-    console.log("getJobs: Jobs count:", result?.data?.length || 0);
-    
     return result?.data || [];
   } catch (error) {
     console.error("getJobs: Error fetching jobs:", error);
     return [];
+  }
+}
+
+/**
+ * Get a single job by slug for public viewing
+ */
+export async function getJobBySlug(slug: string): Promise<Job | null> {
+  try {
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    return await fetchJobBySlug(slug, apiToken);
+  } catch (error) {
+    console.error("Error fetching job by slug:", error);
+    return null;
   }
 }

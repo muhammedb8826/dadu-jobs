@@ -107,6 +107,38 @@ export async function fetchJobById(
 }
 
 /**
+ * Fetch a single job by slug (for public viewing)
+ */
+export async function fetchJobBySlug(
+  slug: string,
+  apiToken?: string
+): Promise<Job> {
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) {
+    throw new Error("Strapi API is not configured");
+  }
+
+  const url = `${strapiUrl}/api/jobs?filters[slug][$eq]=${encodeURIComponent(slug)}&${POPULATE_QUERY}&pagination[limit]=1`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getAuthHeaders(apiToken),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Job with slug "${slug}" not found.`);
+  }
+
+  const result = await response.json();
+  if (!result?.data || result.data.length === 0) {
+    throw new Error(`Job with slug "${slug}" not found.`);
+  }
+
+  return result.data[0];
+}
+
+/**
  * Fetch jobs list (optionally filtered by user ID)
  */
 export async function fetchJobs(
