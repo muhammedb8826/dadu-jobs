@@ -108,12 +108,25 @@ async function getStudentProfile(email: string, userId: string) {
 
 async function getCandidateProfile(userId: string) {
   try {
+    const strapiUrl = getStrapiURL();
+    if (!strapiUrl) {
+      return null;
+    }
+
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    
+    // Build populate query for candidate profile
+    const populateQuery = "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
+    
+    // Fetch candidate profile directly from Strapi
+    const userIdNum = Number(userId);
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/candidate-profiles?myProfile=true`,
+      `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userIdNum}&${populateQuery}`,
       {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
+          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
         },
         cache: "no-store",
       }
@@ -124,7 +137,17 @@ async function getCandidateProfile(userId: string) {
     }
 
     const result = await response.json();
-    return result?.data || null;
+    
+    // Return the first profile if array, or the profile if single object
+    if (result?.data) {
+      if (Array.isArray(result.data) && result.data.length > 0) {
+        return result.data[0];
+      } else if (result.data && !Array.isArray(result.data)) {
+        return result.data;
+      }
+    }
+    
+    return null;
   } catch (error) {
     console.error("Error fetching candidate profile:", error);
     return null;
