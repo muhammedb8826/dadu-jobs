@@ -16,7 +16,7 @@ jobs:
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: 22.18.0
+        node-version: 20
 
     - name: Install dependencies
       run: npm install
@@ -26,6 +26,7 @@ jobs:
         rm -f .env.production
         {
           echo "NEXT_PUBLIC_API_BASE_URL=https://jobs-portal.qenenia.com";
+          echo "NEXT_PUBLIC_API_TOKEN=${{ secrets.NEXT_PUBLIC_API_TOKEN }}";
         } >> .env.production
 
     - name: Build Next.js app
