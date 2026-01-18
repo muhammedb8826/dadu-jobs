@@ -17,29 +17,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-
-type Category = {
-  id: number;
-  documentId: string;
-  name: string;
-  slug: string;
-};
-
-type JobFormData = {
-  title: string;
-  description: string;
-  location: string;
-  jobType: string;
-  deadline: string;
-  workplaceType: string;
-  isFeatured: boolean;
-  experience: string;
-  salaryMin: string;
-  salaryMax: string;
-  salaryCurrency: string;
-  isNegotiable: boolean;
-  categories: number[];
-};
+import type { Category, JobFormData } from "../types/job.types";
 
 export function JobPostingForm({ jobId }: { jobId?: number }) {
   const router = useRouter();
@@ -63,6 +41,7 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
     salaryCurrency: "ETB",
     isNegotiable: false,
     categories: [],
+    jobCode: "",
   });
 
   // Load categories
@@ -108,6 +87,7 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
                 salaryCurrency: job.salary?.currency || "ETB",
                 isNegotiable: job.salary?.isNegotiable || false,
                 categories: job.categories?.map((cat: Category) => cat.id) || [],
+                jobCode: job.jobCode || "",
               });
             }
           }
@@ -157,6 +137,9 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
       if (!formData.deadline) {
         throw new Error("Application deadline is required");
       }
+      if (!formData.jobCode.trim()) {
+        throw new Error("Job code is required");
+      }
       if (formData.categories.length === 0) {
         throw new Error("At least one category is required");
       }
@@ -170,6 +153,7 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
         isFeatured: formData.isFeatured,
         experience: formData.experience,
         categories: formData.categories,
+        jobCode: formData.jobCode.trim(),
       };
 
       if (formData.location) {
@@ -291,6 +275,22 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
               placeholder="e.g., Senior Software Engineer"
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="jobCode">
+              Job Code <span className="text-destructive">*</span>
+            </Label>
+            <Input
+              id="jobCode"
+              value={formData.jobCode}
+              onChange={(e) => handleInputChange("jobCode", e.target.value)}
+              placeholder="e.g., 8.40/DaDU-52565"
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Unique identifier for this job posting
+            </p>
           </div>
 
           <div className="space-y-2">

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStrapiURL } from "@/lib/strapi/client";
 import { getSession } from "@/lib/auth/session";
 import { isEmployer } from "@/lib/auth/rbac";
+import {
+  fetchCategories,
+  fetchJobById,
+  fetchJobs,
+  getEmployerCompanyId,
+  checkJobCodeExists,
+  generateSlug,
+  createJob,
+  verifyJobOwnership,
+  updateJob,
+} from "@/features/jobs/api/job.api";
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,39 +20,12 @@ export async function GET(request: NextRequest) {
     const jobId = searchParams.get("id");
     const categoriesOnly = searchParams.get("categories") === "true";
 
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return NextResponse.json(
-        { error: "Strapi API is not configured" },
-        { status: 500 }
-      );
-    }
-
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
 
     // If requesting categories only
     if (categoriesOnly) {
-      const response = await fetch(
-        `${strapiUrl}/api/categories?populate=*`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-          cache: "no-store",
-        }
-      );
-
-      if (!response.ok) {
-        return NextResponse.json(
-          { error: "Failed to fetch categories" },
-          { status: response.status }
-        );
-      }
-
-      const result = await response.json();
-      return NextResponse.json({ data: result.data || [] }, { status: 200 });
+      const categories = await fetchCategories(apiToken);
+      return NextResponse.json({ data: categories }, { status: 200 });
     }
 
     // If requesting a specific job
@@ -55,62 +38,19 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const populateQuery = "populate[categories]=*&populate[salary]=*";
-      const response = await fetch(
-        `${strapiUrl}/api/jobs/${jobId}?${populateQuery}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-          cache: "no-store",
-        }
-      );
-
-      if (!response.ok) {
-        return NextResponse.json(
-          { error: "Failed to fetch job" },
-          { status: response.status }
-        );
-      }
-
-      const result = await response.json();
-      return NextResponse.json(result, { status: 200 });
+      const job = await fetchJobById(jobId, apiToken, session.jwt);
+      return NextResponse.json({ data: job }, { status: 200 });
     }
 
     // List all jobs (public endpoint, but can be filtered by employer)
-    const populateQuery = "populate[categories]=*&populate[salary]=*";
-    let url = `${strapiUrl}/api/jobs?${populateQuery}`;
-
-    // If user is an employer, they can filter by their own jobs
-    if (session && isEmployer(session)) {
-      const userId = Number(session.userId);
-      url = `${strapiUrl}/api/jobs?filters[user][id][$eq]=${userId}&${populateQuery}`;
-    }
-
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch jobs" },
-        { status: response.status }
-      );
-    }
-
-    const result = await response.json();
+    const userId = session && isEmployer(session) ? Number(session.userId) : undefined;
+    const result = await fetchJobs(userId, apiToken, session?.jwt);
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error("Jobs fetch error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch jobs";
     return NextResponse.json(
-      { error: "Failed to fetch jobs" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -145,17 +85,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return NextResponse.json(
-        { error: "Strapi API is not configured" },
-        { status: 500 }
-      );
-    }
-
     const userJwt = session.jwt;
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
+
+    // Get employer's company
+    const companyId = await getEmployerCompanyId(userId, apiToken, userJwt);
 
     // Extract and prepare job data
     const {
@@ -169,21 +104,27 @@ export async function POST(request: NextRequest) {
       experience,
       salary,
       categories,
+      jobCode,
     } = body.data;
 
     // Validate required fields
-    if (!title || !description || !deadline) {
+    if (!title || !description || !deadline || !jobCode) {
       return NextResponse.json(
-        { error: "Title, description, and deadline are required" },
+        { error: "Title, description, deadline, and job code are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if jobCode already exists
+    if (await checkJobCodeExists(jobCode, undefined, apiToken)) {
+      return NextResponse.json(
+        { error: "Job code already exists. Please use a unique job code." },
         { status: 400 }
       );
     }
 
     // Generate slug from title
-    const slug = title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
+    const slug = generateSlug(title);
 
     // Prepare job payload
     const jobData: Record<string, unknown> = {
@@ -195,8 +136,14 @@ export async function POST(request: NextRequest) {
       isFeatured: isFeatured || false,
       experience: experience || "Entry",
       user: userId,
-      approvalStatus: "Pending", // New jobs start as pending
+      approvalStatus: "Pending",
+      jobCode,
     };
+
+    // Link company if available
+    if (companyId) {
+      jobData.company = companyId;
+    }
 
     if (location) {
       jobData.location = location;
@@ -206,106 +153,33 @@ export async function POST(request: NextRequest) {
       jobData.jobType = jobType;
     }
 
-    // Handle salary - create or find existing salary entry
-    if (salary) {
-      let salaryId: number | null = null;
-
-      // Check if a similar salary exists
-      if (salary.min !== undefined || salary.max !== undefined) {
-        const salaryCheckUrl = `${strapiUrl}/api/salaries?filters[min][$eq]=${salary.min || null}&filters[max][$eq]=${salary.max || null}&filters[currency][$eq]=${salary.currency || "ETB"}&filters[isNegotiable][$eq]=${salary.isNegotiable || false}`;
-        
-        const salaryCheckResponse = await fetch(salaryCheckUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-        });
-
-        if (salaryCheckResponse.ok) {
-          const salaryResult = await salaryCheckResponse.json().catch(() => ({}));
-          if (salaryResult?.data && salaryResult.data.length > 0) {
-            salaryId = salaryResult.data[0].id;
-          }
-        }
-
-        // Create new salary if it doesn't exist
-        if (!salaryId) {
-          const createSalaryResponse = await fetch(`${strapiUrl}/api/salaries`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-              ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-            },
-            body: JSON.stringify({
-              data: {
-                min: salary.min || null,
-                max: salary.max || null,
-                currency: salary.currency || "ETB",
-                isNegotiable: salary.isNegotiable || false,
-              },
-            }),
-          });
-
-          if (createSalaryResponse.ok) {
-            const salaryResult = await createSalaryResponse.json().catch(() => ({}));
-            if (salaryResult?.data) {
-              salaryId = salaryResult.data.id || salaryResult.data.documentId;
-            }
-          }
-        }
-      }
-
-      if (salaryId) {
-        jobData.salary = salaryId;
+    // Handle salary as a Component
+    if (salary !== undefined) {
+      if (typeof salary === 'object' && salary !== null && !Array.isArray(salary)) {
+        jobData.salary = {
+          min: salary.min ?? null,
+          max: salary.max ?? null,
+          currency: salary.currency || "ETB",
+          isNegotiable: !!salary.isNegotiable
+        };
+      } else if (typeof salary === 'number') {
+        jobData.salary = salary;
       }
     }
 
-    // Handle categories - should be array of category IDs
+    // Handle categories
     if (categories && Array.isArray(categories) && categories.length > 0) {
       jobData.categories = categories;
     }
 
     // Create the job
-    const response = await fetch(`${strapiUrl}/api/jobs`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-        ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
-      body: JSON.stringify({ data: jobData }),
-    });
-
-    const responseText = await response.text();
-    let result: Record<string, unknown> = {};
-    if (responseText) {
-      try {
-        result = JSON.parse(responseText);
-      } catch {
-        result = { error: responseText };
-      }
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        (result?.error as { message?: string })?.message ||
-        (result?.error as string) ||
-        result?.message ||
-        "Failed to create job posting";
-      
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: response.status || 500 }
-      );
-    }
-
-    return NextResponse.json(result, { status: 201 });
+    const job = await createJob(jobData, userJwt, apiToken);
+    return NextResponse.json({ data: job }, { status: 201 });
   } catch (error) {
     console.error("Job creation error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to create job posting";
     return NextResponse.json(
-      { error: "Failed to create job posting" },
+      { error: errorMessage },
       { status: 500 }
     );
   }
@@ -340,18 +214,10 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return NextResponse.json(
-        { error: "Strapi API is not configured" },
-        { status: 500 }
-      );
-    }
-
     const userJwt = session.jwt;
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
-    const jobId = body.data.id;
+    const jobId = body.data.id || body.data.documentId;
 
     if (!jobId) {
       return NextResponse.json(
@@ -360,165 +226,79 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify the job belongs to the logged-in user
-    const verifyResponse = await fetch(
-      `${strapiUrl}/api/jobs/${jobId}?populate=user`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
-      }
-    );
+    // Get employer's company
+    const companyId = await getEmployerCompanyId(userId, apiToken, userJwt);
 
-    if (verifyResponse.ok) {
-      const verifyResult = await verifyResponse.json().catch(() => ({}));
-      const job = verifyResult?.data;
-      
-      if (job?.user?.id !== userId) {
+    // Verify the job belongs to the logged-in user
+    if (!(await verifyJobOwnership(jobId, userId, apiToken))) {
+      return NextResponse.json(
+        { error: "Access denied. You can only update your own job postings." },
+        { status: 403 }
+      );
+    }
+
+    // Clean the data - Whitelist only allowed fields
+    const updateData: Record<string, unknown> = {};
+    const allowedFields = [
+      'title', 'description', 'location', 'jobType', 
+      'deadline', 'workplaceType', 'isFeatured', 
+      'experience', 'jobCode', 'categories'
+    ];
+
+    allowedFields.forEach(field => {
+      if (body.data[field] !== undefined) {
+        updateData[field] = body.data[field];
+      }
+    });
+
+    // Handle slug regeneration if title changed
+    if (updateData.title) {
+      updateData.slug = generateSlug(String(updateData.title));
+    }
+
+    // Handle jobCode with uniqueness validation
+    if (updateData.jobCode) {
+      if (await checkJobCodeExists(String(updateData.jobCode), jobId, apiToken)) {
         return NextResponse.json(
-          { error: "Access denied. You can only update your own job postings." },
-          { status: 403 }
+          { error: "Job code already exists. Please use a unique job code." },
+          { status: 400 }
         );
       }
     }
 
-    // Extract and prepare job data
-    const {
-      title,
-      description,
-      location,
-      jobType,
-      deadline,
-      workplaceType,
-      isFeatured,
-      experience,
-      salary,
-      categories,
-    } = body.data;
-
-    // Prepare update payload
-    const updateData: Record<string, unknown> = {};
-
-    if (title !== undefined) {
-      updateData.title = title;
-      // Regenerate slug if title changed
-      const slug = title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/(^-|-$)/g, "");
-      updateData.slug = slug;
+    // Link company if available
+    if (companyId) {
+      updateData.company = companyId;
     }
 
-    if (description !== undefined) updateData.description = description;
-    if (location !== undefined) updateData.location = location;
-    if (jobType !== undefined) updateData.jobType = jobType;
-    if (deadline !== undefined) updateData.deadline = deadline;
-    if (workplaceType !== undefined) updateData.workplaceType = workplaceType;
-    if (isFeatured !== undefined) updateData.isFeatured = isFeatured;
-    if (experience !== undefined) updateData.experience = experience;
-
-    // Handle salary update
-    if (salary) {
-      let salaryId: number | null = null;
-
-      // Check if a similar salary exists
-      if (salary.min !== undefined || salary.max !== undefined) {
-        const salaryCheckUrl = `${strapiUrl}/api/salaries?filters[min][$eq]=${salary.min || null}&filters[max][$eq]=${salary.max || null}&filters[currency][$eq]=${salary.currency || "ETB"}&filters[isNegotiable][$eq]=${salary.isNegotiable || false}`;
-        
-        const salaryCheckResponse = await fetch(salaryCheckUrl, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-        });
-
-        if (salaryCheckResponse.ok) {
-          const salaryResult = await salaryCheckResponse.json().catch(() => ({}));
-          if (salaryResult?.data && salaryResult.data.length > 0) {
-            salaryId = salaryResult.data[0].id;
-          }
-        }
-
-        // Create new salary if it doesn't exist
-        if (!salaryId) {
-          const createSalaryResponse = await fetch(`${strapiUrl}/api/salaries`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-              ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-            },
-            body: JSON.stringify({
-              data: {
-                min: salary.min || null,
-                max: salary.max || null,
-                currency: salary.currency || "ETB",
-                isNegotiable: salary.isNegotiable || false,
-              },
-            }),
-          });
-
-          if (createSalaryResponse.ok) {
-            const salaryResult = await createSalaryResponse.json().catch(() => ({}));
-            if (salaryResult?.data) {
-              salaryId = salaryResult.data.id || salaryResult.data.documentId;
-            }
-          }
-        }
-      }
-
-      if (salaryId) {
-        updateData.salary = salaryId;
+    // Handle salary (Component)
+    if (body.data.salary !== undefined) {
+      const salary = body.data.salary;
+      if (typeof salary === 'object' && salary !== null && !Array.isArray(salary)) {
+        updateData.salary = {
+          min: salary.min ?? null,
+          max: salary.max ?? null,
+          currency: salary.currency || "ETB",
+          isNegotiable: !!salary.isNegotiable
+        };
+      } else if (typeof salary === 'number') {
+        updateData.salary = salary;
       }
     }
 
     // Handle categories
-    if (categories !== undefined && Array.isArray(categories)) {
-      updateData.categories = categories;
+    if (updateData.categories !== undefined && !Array.isArray(updateData.categories)) {
+      delete updateData.categories;
     }
 
-    // Update the job
-    const response = await fetch(`${strapiUrl}/api/jobs/${jobId}`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-        ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
-      body: JSON.stringify({ data: updateData }),
-    });
-
-    const responseText = await response.text();
-    let result: Record<string, unknown> = {};
-    if (responseText) {
-      try {
-        result = JSON.parse(responseText);
-      } catch {
-        result = { error: responseText };
-      }
-    }
-
-    if (!response.ok) {
-      const errorMessage =
-        (result?.error as { message?: string })?.message ||
-        (result?.error as string) ||
-        result?.message ||
-        "Failed to update job posting";
-      
-      return NextResponse.json(
-        { error: errorMessage },
-        { status: response.status || 500 }
-      );
-    }
-
-    return NextResponse.json(result, { status: 200 });
+    // Execute update
+    const job = await updateJob(jobId, updateData, userJwt, apiToken);
+    return NextResponse.json({ data: job }, { status: 200 });
   } catch (error) {
     console.error("Job update error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to update job posting";
     return NextResponse.json(
-      { error: "Failed to update job posting" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

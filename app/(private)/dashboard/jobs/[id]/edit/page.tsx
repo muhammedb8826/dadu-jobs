@@ -1,6 +1,6 @@
 import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { JobPostingForm } from "@/components/job-posting-form";
+import { JobPostingForm } from "@/features/jobs";
 import { isEmployer } from "@/lib/auth/rbac";
 
 export default async function EditJobPostingPage({
