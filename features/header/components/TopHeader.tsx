@@ -17,8 +17,6 @@ const socialIcons: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 export function TopHeader({ data }: TopHeaderProps) {
-  console.log("TopHeader data:", data);
-  
   // Don't render if no data
   if (!data.email && !data.phone && data.socialLinks.length === 0 && data.buttons.length === 0) {
     return null;

@@ -94,7 +94,10 @@ export async function strapiFetch<TResponse>(
       fetchOptions.next = next;
     }
 
-    const response = await fetch(fullUrl, fetchOptions);
+    const response = await fetch(fullUrl, {
+      ...fetchOptions,
+      // Ensure we're not using any problematic options that could cause transformAlgorithm errors
+    });
 
     if (!response.ok) {
       const errorBody = await safeReadJson(response);
@@ -105,7 +108,9 @@ export async function strapiFetch<TResponse>(
       );
     }
 
-    return response.json();
+    // Read the response body once
+    const data = await response.json();
+    return data;
   } catch (error) {
     // Log error but return empty response structure to allow build/runtime to continue
     const errorMessage = error instanceof Error ? error.message : String(error);

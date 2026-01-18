@@ -21,7 +21,6 @@ const socialIcons: Record<string, React.ComponentType<{ className?: string }>> =
 };
 
 export function Header({ data, topHeaderData, siteName }: HeaderProps) {
-  console.log("Header data:", data);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   // Debug logging

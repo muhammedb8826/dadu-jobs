@@ -83,8 +83,6 @@ export async function fetchGlobalData(): Promise<GlobalData> {
 
     const data = response.data;
 
-    console.log("Fetched global data:", data);
-
     return {
       siteName: data.siteName,
       siteDescription: data.siteDescription,
