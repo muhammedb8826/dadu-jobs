@@ -82,6 +82,10 @@ export async function fetchGlobalData(): Promise<GlobalData> {
     });
 
     const data = response.data;
+    if (!data) {
+      console.warn("Global data is missing from Strapi response");
+      return EMPTY_GLOBAL_DATA;
+    }
 
     return {
       siteName: data.siteName,
