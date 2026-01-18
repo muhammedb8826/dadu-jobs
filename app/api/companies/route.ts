@@ -20,7 +20,8 @@ export async function GET(request: NextRequest) {
 
     // If requesting a specific company
     if (companyId) {
-      const populateQuery = "populate[logo]=*&populate[socialLinks]=*";
+      // Populate logo with only needed fields (not * to avoid invalid relations)
+      const populateQuery = "populate[logo][fields][0]=id&populate[logo][fields][1]=url&populate[logo][fields][2]=name&populate[logo][fields][3]=alternativeText&populate[logo][fields][4]=formats&populate[socialLinks]=*";
       const response = await fetch(
         `${strapiUrl}/api/companies/${companyId}?${populateQuery}`,
         {
@@ -45,7 +46,8 @@ export async function GET(request: NextRequest) {
     }
 
     // List all companies (public endpoint)
-    const populateQuery = "populate[logo]=*&populate[socialLinks]=*";
+    // Populate logo with only needed fields (not * to avoid invalid relations)
+    const populateQuery = "populate[logo][fields][0]=id&populate[logo][fields][1]=url&populate[logo][fields][2]=name&populate[logo][fields][3]=alternativeText&populate[logo][fields][4]=formats&populate[socialLinks]=*";
     const response = await fetch(`${strapiUrl}/api/companies?${populateQuery}`, {
       method: "GET",
       headers: {

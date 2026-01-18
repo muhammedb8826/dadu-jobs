@@ -120,9 +120,9 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                         {job.publishedAt 
                           ? `${getTimeAgo(job.publishedAt)} by ` 
                           : ""}
-                        {job.company?.name && (
+                        {job.company?.name && job.company?.slug && (
                           <Link 
-                            href={`/companies/${job.company.name.toLowerCase().replace(/\s+/g, "-")}`}
+                            href={`/companies/${job.company.slug}`}
                             className="text-primary hover:underline"
                           >
                             {job.company.name}

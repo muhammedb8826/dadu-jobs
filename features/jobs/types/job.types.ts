@@ -30,6 +30,7 @@ export type Job = {
   company?: {
     id: number;
     name: string;
+    slug: string;
   };
   user?: {
     id: number;

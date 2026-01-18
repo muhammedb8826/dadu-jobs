@@ -93,3 +93,40 @@ export async function getJobBySlug(slug: string): Promise<Job | null> {
     return null;
   }
 }
+
+/**
+ * Get jobs by company ID (for company detail page)
+ */
+export async function getJobsByCompany(companyId: number | string): Promise<Job[]> {
+  try {
+    const strapiUrl = getStrapiURL();
+    if (!strapiUrl) {
+      return [];
+    }
+
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    // Populate categories and company with only needed fields
+    const populateQuery = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company][fields][0]=id&populate[company][fields][1]=name&populate[company][fields][2]=slug";
+    // Filter for approved and active jobs by company
+    const url = `${strapiUrl}/api/jobs?filters[$and][0][approvalStatus][$eq]=Approved&filters[$and][1][isActive][$eq]=true&filters[$and][2][company][id][$eq]=${companyId}&${populateQuery}&pagination[limit]=1000`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const result = await response.json();
+    return result?.data || [];
+  } catch (error) {
+    console.error("Error fetching jobs by company:", error);
+    return [];
+  }
+}

@@ -141,28 +141,49 @@ export async function fetchGlobalData(): Promise<GlobalData> {
           };
         })(),
         navigationLinks: [
-          ...(data.header?.menu?.map((item) => ({
-            label: item.title,
-            url: item.url,
-            isExternal: item.isExternal,
-          })) || []),
+          ...(data.header?.menu?.map((item) => {
+            // Normalize internal URLs to start with / to make them absolute
+            let normalizedUrl = item.url || "#";
+            if (!item.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+              normalizedUrl = `/${normalizedUrl}`;
+            }
+            return {
+              label: item.title,
+              url: normalizedUrl,
+              isExternal: item.isExternal,
+            };
+          }) || []),
         ],
         navigationGroups:
           data.header?.subMenu?.map((group) => ({
             label: group.title,
             links:
-              group.subMenu?.map((link) => ({
-                label: link.title,
-                url: link.url || "#",
-                isExternal: link.isExternal,
-              })) || [],
+              group.subMenu?.map((link) => {
+                // Normalize internal URLs to start with / to make them absolute
+                let normalizedUrl = link.url || "#";
+                if (!link.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+                  normalizedUrl = `/${normalizedUrl}`;
+                }
+                return {
+                  label: link.title,
+                  url: normalizedUrl,
+                  isExternal: link.isExternal,
+                };
+              }) || [],
           })) || [],
         buttons:
-          data.header?.button?.map((btn) => ({
-            label: btn.title || "",
-            url: btn.url || "#",
-            isExternal: btn.isExternal || false,
-          })) || [],
+          data.header?.button?.map((btn) => {
+            // Normalize internal URLs to start with / to make them absolute
+            let normalizedUrl = btn.url || "#";
+            if (!btn.isExternal && normalizedUrl !== "#" && !normalizedUrl.startsWith("/") && !normalizedUrl.startsWith("http://") && !normalizedUrl.startsWith("https://")) {
+              normalizedUrl = `/${normalizedUrl}`;
+            }
+            return {
+              label: btn.title || "",
+              url: normalizedUrl,
+              isExternal: btn.isExternal || false,
+            };
+          }) || [],
       },
       footer: {
         copyRight:
