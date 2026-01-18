@@ -23,17 +23,6 @@ const socialIcons: Record<string, React.ComponentType<{ className?: string }>> =
 export function Header({ data, topHeaderData, siteName }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // Debug logging
-  if (process.env.NODE_ENV === "development") {
-    console.log("Header component - data:", {
-      hasLogo: !!data.logo,
-      logoUrl: data.logo?.url,
-      navLinksCount: data.navigationLinks.length,
-      navGroupsCount: data.navigationGroups.length,
-      buttonsCount: data.buttons?.length || 0,
-    });
-  }
-
   // Prevent body scroll when menu is open
   useEffect(() => {
     if (isMenuOpen) {
