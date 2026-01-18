@@ -20,11 +20,10 @@ export default async function EditJobPostingPage({
   }
 
   const { id } = await params;
-  const jobId = parseInt(id, 10);
-
-  if (isNaN(jobId)) {
-    redirect("/dashboard/jobs");
-  }
+  
+  // In Strapi 5, the ID can be either a numeric ID or a documentId (string)
+  // We'll pass it as-is and let the API handle both cases
+  const jobIdentifier = id;
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
@@ -41,7 +40,7 @@ export default async function EditJobPostingPage({
       {/* Main content */}
       <div className="flex flex-1 flex-col gap-6 px-4 py-6 lg:px-8">
         <section className="flex-1">
-          <JobPostingForm jobId={jobId} />
+          <JobPostingForm jobId={jobIdentifier} />
         </section>
       </div>
     </div>

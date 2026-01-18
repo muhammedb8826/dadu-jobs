@@ -22,6 +22,11 @@ export default async function JobsPage() {
 
   const jobs = await getJobs(Number(session.userId));
 
+  // Debug: Log jobs to see what's being fetched
+  console.log("Fetched jobs:", jobs);
+  console.log("Jobs count:", jobs.length);
+  console.log("User ID:", session.userId);
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
       {/* Page header */}
@@ -61,7 +66,11 @@ export default async function JobsPage() {
             </CardContent>
           </Card>
         ) : (
-          <JobTable jobs={jobs} />
+          <Card>
+            <CardContent className="p-0">
+              <JobTable jobs={jobs} />
+            </CardContent>
+          </Card>
         )}
       </div>
     </div>

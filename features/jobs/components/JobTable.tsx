@@ -2,17 +2,31 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table";
-import { MoreHorizontal, Pencil, Eye } from "lucide-react";
+import { MoreHorizontal, Pencil, Eye, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import type { Job } from "../types/job.types";
 
 function getStatusBadge(status: string) {
@@ -159,33 +173,18 @@ export const jobColumns: ColumnDef<Job>[] = [
     },
   },
   {
-    id: "actions",
-    header: "Actions",
+    accessorKey: "isActive",
+    header: "Active",
     cell: ({ row }) => {
-      const job = row.original;
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
-              <span className="sr-only">Open menu</span>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link href={`/dashboard/jobs/${job.id}/edit`} className="flex items-center">
-                <Pencil className="mr-2 h-4 w-4" />
-                Edit
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href={`/jobs/${job.slug}`} className="flex items-center">
-                <Eye className="mr-2 h-4 w-4" />
-                View
-              </Link>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+      const isActive = row.original.isActive;
+      return isActive ? (
+        <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+          Active
+        </Badge>
+      ) : (
+        <Badge className="bg-gray-500/10 text-gray-700 dark:text-gray-400 border-gray-500/20">
+          Inactive
+        </Badge>
       );
     },
   },
@@ -195,10 +194,113 @@ interface JobTableProps {
   jobs: Job[];
 }
 
+function DeleteJobButton({ job }: { job: Job }) {
+  const router = useRouter();
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [open, setOpen] = React.useState(false);
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      const jobId = job.documentId || job.id;
+      const response = await fetch(`/api/jobs?id=${jobId}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete job");
+      }
+
+      toast.success("Job deleted successfully");
+      setOpen(false);
+      router.refresh();
+    } catch (error) {
+      console.error("Delete error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to delete job");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <AlertDialog open={open} onOpenChange={setOpen}>
+      <AlertDialogTrigger asChild>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            setOpen(true);
+          }}
+          className="text-destructive focus:text-destructive"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This action cannot be undone. This will permanently delete the job
+            posting <strong>&quot;{job.title}&quot;</strong> and all associated data.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
 export function JobTable({ jobs }: JobTableProps) {
+  const columnsWithDelete: ColumnDef<Job>[] = [
+    ...jobColumns, // Include all columns including isActive
+    {
+      id: "actions",
+      header: "Actions",
+      cell: ({ row }) => {
+        const job = row.original;
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/dashboard/jobs/${job.documentId || job.id}/edit`} className="flex items-center">
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/jobs/${job.slug}`} className="flex items-center">
+                  <Eye className="mr-2 h-4 w-4" />
+                  View
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DeleteJobButton job={job} />
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
+    },
+  ];
+
   return (
     <DataTable
-      columns={jobColumns}
+      columns={columnsWithDelete}
       data={jobs}
       searchKey="title"
       searchPlaceholder="Search jobs by title..."

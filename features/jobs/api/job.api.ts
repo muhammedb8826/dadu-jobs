@@ -1,7 +1,9 @@
 import { getStrapiURL } from "@/lib/strapi/client";
 import type { Job, Category } from "../types/job.types";
 
-const POPULATE_QUERY = "populate[categories]=*&populate[salary]=*&populate[company]=*";
+// Populate categories and company with only needed fields (not * to avoid invalid relations)
+// Note: Regular fields like title, description, location, etc. are returned by default
+const POPULATE_QUERY = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company][fields][0]=id&populate[company][fields][1]=name&populate[company][fields][2]=slug&populate[user][fields][0]=id";
 
 /**
  * Get authentication headers for Strapi API calls
@@ -44,7 +46,9 @@ export async function fetchCategories(apiToken?: string): Promise<Category[]> {
 }
 
 /**
- * Fetch a single job by ID
+ * Fetch a single job by ID (supports both numeric ID and documentId for Strapi 5)
+ * In Strapi 5, the API prefers Document IDs (strings) over numeric IDs.
+ * If a numeric ID is provided and returns 404, we fallback to filtering by the id field.
  */
 export async function fetchJobById(
   jobId: string | number,
@@ -56,20 +60,49 @@ export async function fetchJobById(
     throw new Error("Strapi API is not configured");
   }
 
-  const response = await fetch(
-    `${strapiUrl}/api/jobs/${jobId}?${POPULATE_QUERY}`,
-    {
-      method: "GET",
-      headers: getAuthHeaders(apiToken, userJwt),
-      cache: "no-store",
-    }
-  );
+  // Try the standard REST endpoint first
+  const url = `${strapiUrl}/api/jobs/${jobId}?${POPULATE_QUERY}`;
+  console.log("fetchJobById: Fetching from URL:", url);
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getAuthHeaders(apiToken, userJwt),
+    cache: "no-store",
+  });
 
   if (!response.ok) {
-    throw new Error("Failed to fetch job");
+    // If 404, specifically try searching by the numeric ID field
+    // This handles the case where Strapi 5 interprets numeric IDs as documentIds
+    if (response.status === 404) {
+      console.log("fetchJobById: 404 received, trying filter by id field...");
+      const filterUrl = `${strapiUrl}/api/jobs?filters[id][$eq]=${jobId}&${POPULATE_QUERY}&pagination[limit]=1`;
+      console.log("fetchJobById: Trying filter URL:", filterUrl);
+      
+      const filterRes = await fetch(filterUrl, {
+        method: "GET",
+        headers: getAuthHeaders(apiToken, userJwt),
+        cache: "no-store",
+      });
+
+      if (filterRes.ok) {
+        const filterData = await filterRes.json();
+        if (filterData?.data && filterData.data.length > 0) {
+          console.log("fetchJobById: Found job via filter:", filterData.data[0]?.title);
+          return filterData.data[0]; // Return the first match
+        }
+      }
+    }
+
+    // If all attempts fail, return a clear error message
+    const errorText = await response.text().catch(() => "Unknown error");
+    console.error("fetchJobById: Response not OK. Status:", response.status);
+    console.error("fetchJobById: Error response:", errorText);
+    
+    throw new Error(`Job ${jobId} not found.`);
   }
 
   const result = await response.json();
+  console.log("fetchJobById: Successfully fetched job:", result?.data?.title);
   return result.data;
 }
 
@@ -298,4 +331,41 @@ export async function updateJob(
   }
 
   return result.data as Job;
+}
+
+/**
+ * Delete a job by ID
+ */
+export async function deleteJob(
+  jobId: string | number,
+  userJwt?: string,
+  apiToken?: string
+): Promise<void> {
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) {
+    throw new Error("Strapi API is not configured");
+  }
+
+  const response = await fetch(`${strapiUrl}/api/jobs/${jobId}`, {
+    method: "DELETE",
+    headers: getAuthHeaders(apiToken, userJwt),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    let errorMessage = `Failed to delete job (Status: ${response.status})`;
+    
+    try {
+      const errorJson = JSON.parse(errorText);
+      if (errorJson?.error?.message) {
+        errorMessage = errorJson.error.message;
+      }
+    } catch {
+      if (errorText && errorText !== "Unknown error") {
+        errorMessage = errorText;
+      }
+    }
+    
+    throw new Error(errorMessage);
+  }
 }

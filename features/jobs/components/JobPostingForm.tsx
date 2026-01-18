@@ -19,7 +19,7 @@ import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import type { Category, JobFormData } from "../types/job.types";
 
-export function JobPostingForm({ jobId }: { jobId?: number }) {
+export function JobPostingForm({ jobId }: { jobId?: number | string }) {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(!!jobId);
   const [isSaving, setIsSaving] = useState(false);
@@ -35,6 +35,7 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
     deadline: "",
     workplaceType: "On Site",
     isFeatured: false,
+    isActive: true,
     experience: "Entry",
     salaryMin: "",
     salaryMax: "",
@@ -68,28 +69,44 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
     if (jobId) {
       const loadJob = async () => {
         try {
+          console.log("Loading job with ID:", jobId);
           const response = await fetch(`/api/jobs?id=${jobId}`);
-          if (response.ok) {
-            const result = await response.json();
-            if (result?.data) {
-              const job = result.data;
-              setFormData({
-                title: job.title || "",
-                description: job.description || "",
-                location: job.location || "",
-                jobType: job.jobType || "",
-                deadline: job.deadline || "",
-                workplaceType: job.workplaceType || "On Site",
-                isFeatured: job.isFeatured || false,
-                experience: job.experience || "Entry",
-                salaryMin: job.salary?.min?.toString() || "",
-                salaryMax: job.salary?.max?.toString() || "",
-                salaryCurrency: job.salary?.currency || "ETB",
-                isNegotiable: job.salary?.isNegotiable || false,
-                categories: job.categories?.map((cat: Category) => cat.id) || [],
-                jobCode: job.jobCode || "",
-              });
-            }
+          console.log("Job fetch response status:", response.status);
+          
+          if (!response.ok) {
+            const errorText = await response.text().catch(() => "Unknown error");
+            console.error("Job fetch failed:", response.status, errorText);
+            setSubmitError(`Failed to load job details: ${response.status}`);
+            setIsLoading(false);
+            return;
+          }
+
+          const result = await response.json();
+          console.log("Job fetch result:", result);
+          
+          if (result?.data) {
+            const job = result.data;
+            console.log("Setting form data with job:", job);
+            setFormData({
+              title: job.title || "",
+              description: job.description || "",
+              location: job.location || "",
+              jobType: job.jobType || "",
+              deadline: job.deadline || "",
+              workplaceType: job.workplaceType || "On Site",
+              isFeatured: job.isFeatured || false,
+              isActive: job.isActive ?? true,
+              experience: job.experience || "Entry",
+              salaryMin: job.salary?.min?.toString() || "",
+              salaryMax: job.salary?.max?.toString() || "",
+              salaryCurrency: job.salary?.currency || "ETB",
+              isNegotiable: job.salary?.isNegotiable || false,
+              categories: job.categories?.map((cat: Category) => cat.id) || [],
+              jobCode: job.jobCode || "",
+            });
+          } else {
+            console.error("No data in response:", result);
+            setSubmitError("Job data not found in response");
           }
         } catch (error) {
           console.error("Error loading job:", error);
@@ -151,6 +168,7 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
         deadline: formData.deadline,
         workplaceType: formData.workplaceType,
         isFeatured: formData.isFeatured,
+        isActive: formData.isActive,
         experience: formData.experience,
         categories: formData.categories,
         jobCode: formData.jobCode.trim(),
@@ -509,6 +527,17 @@ export function JobPostingForm({ jobId }: { jobId?: number }) {
             />
             <Label htmlFor="isFeatured" className="cursor-pointer">
               Feature this job posting (may require approval)
+            </Label>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="isActive"
+              checked={formData.isActive}
+              onCheckedChange={(checked) => handleInputChange("isActive", checked === true)}
+            />
+            <Label htmlFor="isActive" className="cursor-pointer">
+              Job is active
             </Label>
           </div>
         </CardContent>

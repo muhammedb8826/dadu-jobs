@@ -11,6 +11,7 @@ import {
   createJob,
   verifyJobOwnership,
   updateJob,
+  deleteJob,
 } from "@/features/jobs/api/job.api";
 
 export async function GET(request: NextRequest) {
@@ -38,8 +39,46 @@ export async function GET(request: NextRequest) {
         );
       }
 
-      const job = await fetchJobById(jobId, apiToken, session.jwt);
-      return NextResponse.json({ data: job }, { status: 200 });
+      try {
+        console.log("API: Fetching job with ID:", jobId);
+        const job = await fetchJobById(jobId, apiToken, session.jwt);
+        console.log("API: Job fetched successfully:", job?.title);
+        
+        // Verify the job belongs to the current user
+        const userId = Number(session.userId);
+        // Check both numeric ID and the documentId structure
+        const jobUserId = typeof job?.user === 'object' && job.user !== null 
+          ? job.user.id 
+          : typeof job?.user === 'number' 
+            ? job.user 
+            : null;
+        
+        if (jobUserId && jobUserId !== userId) {
+          console.error("API: Job ownership mismatch. Job user:", jobUserId, "Current user:", userId);
+          return NextResponse.json(
+            { error: "Job not found or access denied" },
+            { status: 404 }
+          );
+        }
+        
+        return NextResponse.json({ data: job }, { status: 200 });
+      } catch (error) {
+        console.error("API: Error fetching job:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to fetch job";
+        
+        // If it's a 404, return 404 status
+        if (errorMessage.includes("404") || errorMessage.includes("Not Found")) {
+          return NextResponse.json(
+            { error: "Job not found" },
+            { status: 404 }
+          );
+        }
+        
+        return NextResponse.json(
+          { error: errorMessage },
+          { status: 500 }
+        );
+      }
     }
 
     // List all jobs (public endpoint, but can be filtered by employer)
@@ -101,6 +140,7 @@ export async function POST(request: NextRequest) {
       deadline,
       workplaceType,
       isFeatured,
+      isActive,
       experience,
       salary,
       categories,
@@ -134,6 +174,7 @@ export async function POST(request: NextRequest) {
       deadline,
       workplaceType: workplaceType || "On Site",
       isFeatured: isFeatured || false,
+      isActive: isActive !== undefined ? isActive : true,
       experience: experience || "Entry",
       user: userId,
       approvalStatus: "Pending",
@@ -241,7 +282,7 @@ export async function PUT(request: NextRequest) {
     const updateData: Record<string, unknown> = {};
     const allowedFields = [
       'title', 'description', 'location', 'jobType', 
-      'deadline', 'workplaceType', 'isFeatured', 
+      'deadline', 'workplaceType', 'isFeatured', 'isActive',
       'experience', 'jobCode', 'categories'
     ];
 
@@ -297,6 +338,65 @@ export async function PUT(request: NextRequest) {
   } catch (error) {
     console.error("Job update error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to update job posting";
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE handler for deleting jobs
+export async function DELETE(request: NextRequest) {
+  try {
+    const session = await getSession();
+
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // Role-based access: Only employers can delete jobs
+    if (!isEmployer(session)) {
+      return NextResponse.json(
+        { error: "Access denied. Only employers can delete job postings." },
+        { status: 403 }
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get("id");
+
+    if (!jobId) {
+      return NextResponse.json(
+        { error: "Job ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const userJwt = session.jwt;
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    const userId = Number(session.userId);
+
+    // Verify the job belongs to the logged-in user
+    if (!(await verifyJobOwnership(jobId, userId, apiToken))) {
+      return NextResponse.json(
+        { error: "Access denied. You can only delete your own job postings." },
+        { status: 403 }
+      );
+    }
+
+    // Delete the job
+    await deleteJob(jobId, userJwt, apiToken);
+
+    return NextResponse.json(
+      { success: true, message: "Job deleted successfully" },
+      { status: 200 }
+    );
+  } catch (error) {
+    console.error("Job delete error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to delete job posting";
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

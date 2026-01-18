@@ -3,12 +3,14 @@ export type Job = {
   documentId: string;
   title: string;
   slug: string;
+  description?: string;
   jobCode?: string;
   location?: string;
   jobType?: string;
   deadline: string;
   workplaceType: string;
   isFeatured: boolean;
+  isActive: boolean;
   experience: string;
   approvalStatus: string;
   salary?: {
@@ -26,6 +28,9 @@ export type Job = {
     id: number;
     name: string;
   };
+  user?: {
+    id: number;
+  } | number;
 };
 
 export type Category = {
@@ -43,6 +48,7 @@ export type JobFormData = {
   deadline: string;
   workplaceType: string;
   isFeatured: boolean;
+  isActive: boolean;
   experience: string;
   salaryMin: string;
   salaryMax: string;
