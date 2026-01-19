@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/auth/session";
+import { getSession, validateSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { isEmployer } from "@/lib/auth/rbac";
 import { getStrapiURL } from "@/lib/strapi/client";
@@ -56,6 +56,14 @@ export default async function EmployerProfilePage() {
 
   if (!session) {
     redirect("/login");
+  }
+
+  // Validate session with Strapi to ensure JWT token is still valid
+  const isValid = await validateSession(session);
+  if (!isValid) {
+    // Session is invalid (user deleted or token expired), redirect to logout route
+    // The logout route handler will clear the session cookie
+    redirect("/api/auth/logout");
   }
 
   if (!isEmployer(session)) {

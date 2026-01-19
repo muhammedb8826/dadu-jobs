@@ -19,7 +19,7 @@ import {
   Plus
 } from "lucide-react"
 
-import { getSession } from "@/lib/auth/session"
+import { getSession, validateSession } from "@/lib/auth/session"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -194,6 +194,14 @@ export default async function DashboardPage() {
 
   if (!session) {
     redirect("/login")
+  }
+
+  // Validate session with Strapi to ensure JWT token is still valid
+  const isValid = await validateSession(session)
+  if (!isValid) {
+    // Session is invalid (user deleted or token expired), redirect to logout route
+    // The logout route handler will clear the session cookie
+    redirect("/api/auth/logout")
   }
 
   // Role-based access: Dashboard content varies by user type

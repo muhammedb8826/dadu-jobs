@@ -98,6 +98,13 @@ export function EmployerProfileCompletionForm({
     const loadProfile = async () => {
       try {
         const response = await fetch("/api/employer-profiles?myProfile=true");
+        
+        // Handle authentication errors - redirect to login
+        if (response.status === 401 || response.status === 403) {
+          router.push("/login?error=session_expired");
+          return;
+        }
+        
         if (response.ok) {
           const result = await response.json();
           if (result?.data) {
@@ -157,7 +164,7 @@ export function EmployerProfileCompletionForm({
     };
 
     loadProfile();
-  }, []);
+  }, [router]);
 
   const handleInputChange = (field: keyof EmployerProfileFormData, value: string | SocialLink[]) => {
     setFormData((prev) => ({
@@ -345,6 +352,12 @@ export function EmployerProfileCompletionForm({
       }
 
       if (!companyResponse.ok) {
+        // Handle authentication errors - redirect to login
+        if (companyResponse.status === 401 || companyResponse.status === 403) {
+          router.push("/login?error=session_expired");
+          return;
+        }
+
         let errorMessage = "Failed to save company";
         
         if (companyResult?.error) {
@@ -461,6 +474,12 @@ export function EmployerProfileCompletionForm({
       }
 
       if (!profileResponse.ok) {
+        // Handle authentication errors - redirect to login
+        if (profileResponse.status === 401 || profileResponse.status === 403) {
+          router.push("/login?error=session_expired");
+          return;
+        }
+
         let errorMessage = "Failed to save profile";
         
         if (profileResult?.error) {

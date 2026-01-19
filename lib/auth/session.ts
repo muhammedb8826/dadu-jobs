@@ -50,3 +50,42 @@ export async function deleteSession() {
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
+/**
+ * Validate session by checking if the JWT token is still valid with Strapi
+ * Returns true if valid, false if invalid
+ */
+export async function validateSession(session: SessionData | null): Promise<boolean> {
+  if (!session || !session.jwt) {
+    return false;
+  }
+
+  try {
+    const strapiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!strapiUrl) {
+      return false;
+    }
+
+    // Try to fetch user info using the JWT token
+    // This will fail if the token is invalid or user is deleted
+    const response = await fetch(`${strapiUrl}/api/users/me`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.jwt}`,
+      },
+      cache: "no-store",
+    });
+
+    // If we get a 401 or 403, the token is invalid
+    if (response.status === 401 || response.status === 403) {
+      return false;
+    }
+
+    // If we get a 200, the token is valid
+    return response.ok;
+  } catch (error) {
+    console.error("Session validation error:", error);
+    return false;
+  }
+}
+

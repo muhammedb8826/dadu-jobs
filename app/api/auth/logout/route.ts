@@ -18,3 +18,20 @@ export async function POST(request: NextRequest) {
   }
 }
 
+// GET handler for redirects (e.g., when session expires)
+export async function GET(request: NextRequest) {
+  try {
+    await deleteSession();
+    
+    // Redirect to login with error message
+    const url = new URL("/login", request.url);
+    url.searchParams.set("error", "session_expired");
+    
+    return NextResponse.redirect(url);
+  } catch (error) {
+    console.error("Logout error:", error);
+    // Even if deletion fails, redirect to login
+    return NextResponse.redirect(new URL("/login?error=session_expired", request.url));
+  }
+}
+
