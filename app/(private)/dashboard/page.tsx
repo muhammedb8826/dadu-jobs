@@ -217,7 +217,7 @@ export default async function DashboardPage() {
 
   // If user is an employer, show employer dashboard
   if (isEmployer(session)) {
-    // Fetch employer profile to check if it exists
+    // Fetch employer profile using the same populate query as the API route
     const strapiUrl = getStrapiURL();
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     let employerProfile = null;
@@ -227,18 +227,30 @@ export default async function DashboardPage() {
     if (strapiUrl) {
       try {
         const userId = Number(session.userId);
+        // Use the same populate query as the API route for consistency
         const populateQuery =
           "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=name&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&" +
-          "populate[company][fields][0]=id&populate[company][fields][1]=documentId&populate[company][fields][2]=name";
+          "populate[company]=*&" +
+          "populate[company][populate][logo][fields][0]=id&populate[company][populate][logo][fields][1]=url&populate[company][populate][logo][fields][2]=name&populate[company][populate][logo][fields][3]=alternativeText&populate[company][populate][logo][fields][4]=formats&" +
+          "populate[company][populate][socialLinks]=*&" +
+          "populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
+        
+        // Use user's JWT if available, fallback to API token (same as API route)
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+        };
+        
+        if (session.jwt) {
+          headers.Authorization = `Bearer ${session.jwt}`;
+        } else if (apiToken) {
+          headers.Authorization = `Bearer ${apiToken}`;
+        }
         
         const response = await fetch(
           `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`,
           {
             method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-            },
+            headers,
             cache: "no-store",
           }
         );
@@ -250,6 +262,9 @@ export default async function DashboardPage() {
             hasProfile = true;
             hasCompany = !!employerProfile.company;
           }
+        } else {
+          const errorText = await response.text().catch(() => "");
+          console.error("Error fetching employer profile:", response.status, errorText);
         }
       } catch (error) {
         console.error("Error fetching employer profile:", error);
