@@ -109,6 +109,18 @@ export function EmployerProfileCompletionForm({
           const result = await response.json();
           if (result?.data) {
             const profile = result.data;
+            
+            // Debug logging for production issues
+            console.log("Profile data received:", {
+              hasProfile: !!profile,
+              fullName: profile.fullName,
+              jobTitle: profile.jobTitle,
+              phone: profile.phone,
+              hasCompany: !!profile.company,
+              companyName: profile.company?.name,
+              companyData: profile.company,
+            });
+            
             setProfileId(profile.id);
             setProfileDocumentId(profile.documentId || null);
             

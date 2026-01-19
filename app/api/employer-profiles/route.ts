@@ -28,12 +28,11 @@ export async function GET(request: NextRequest) {
     const myProfile = searchParams.get("myProfile") === "true";
 
     // Build populate query
-    // Avoid populate=* to prevent media `related` validation errors in Strapi.
-    // Explicitly populate needed relations and limit media fields.
-    // First populate company, then its nested fields (logo, socialLinks)
+    // Use field selection for media to avoid 'related' field validation errors
+    // Populate company and its nested relations without field restrictions on main entity
     const populateQuery =
       "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=name&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&" +
-      "populate[company][fields][0]=id&populate[company][fields][1]=documentId&populate[company][fields][2]=name&populate[company][fields][3]=website&populate[company][fields][4]=industry&populate[company][fields][5]=companySize&populate[company][fields][6]=location&populate[company][fields][7]=description&populate[company][fields][8]=tagline&populate[company][fields][9]=slug&" +
+      "populate[company]=*&" +
       "populate[company][populate][logo][fields][0]=id&populate[company][populate][logo][fields][1]=url&populate[company][populate][logo][fields][2]=name&populate[company][populate][logo][fields][3]=alternativeText&populate[company][populate][logo][fields][4]=formats&" +
       "populate[company][populate][socialLinks]=*&" +
       "populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
@@ -52,12 +51,21 @@ export async function GET(request: NextRequest) {
       url = `${strapiUrl}/api/employer-profiles?${populateQuery}`;
     }
 
+    // Use user's JWT if available, fallback to API token
+    // User JWT ensures we get all fields the user has access to
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    
+    if (session.jwt) {
+      headers.Authorization = `Bearer ${session.jwt}`;
+    } else if (apiToken) {
+      headers.Authorization = `Bearer ${apiToken}`;
+    }
+
     const response = await fetch(url, {
       method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
+      headers,
       cache: "no-store",
     });
 
@@ -77,8 +85,43 @@ export async function GET(request: NextRequest) {
     }
 
     // If employer is fetching their own profile, return single object instead of array
-    if (myProfile && isEmployer(session) && Array.isArray(result?.data) && result.data.length > 0) {
-      return NextResponse.json({ data: result.data[0], meta: result.meta }, { status: 200 });
+    if (myProfile && isEmployer(session)) {
+      let profileData = null;
+      
+      // Handle both array and object responses
+      if (Array.isArray(result?.data) && result.data.length > 0) {
+        profileData = result.data[0];
+      } else if (result?.data && !Array.isArray(result.data)) {
+        profileData = result.data;
+      }
+      
+      if (profileData) {
+        // Debug logging for production issues
+        console.log("Profile data structure:", {
+          id: profileData.id,
+          documentId: profileData.documentId,
+          fullName: profileData.fullName,
+          jobTitle: profileData.jobTitle,
+          phone: profileData.phone,
+          bio: profileData.bio,
+          hasCompany: !!profileData.company,
+          companyName: profileData.company?.name,
+          companyFields: profileData.company ? Object.keys(profileData.company) : [],
+          allFields: Object.keys(profileData),
+        });
+        
+        // Return profile data with all fields explicitly included
+        return NextResponse.json({ 
+          data: profileData,
+          meta: result.meta 
+        }, { status: 200 });
+      } else {
+        // No profile found
+        return NextResponse.json({ 
+          data: null,
+          meta: result.meta 
+        }, { status: 200 });
+      }
     }
 
     return NextResponse.json(result, { status: 200 });
