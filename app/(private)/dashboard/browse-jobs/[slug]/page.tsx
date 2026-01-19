@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
+import { ApplyButton } from "./ApplyButton";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -82,8 +83,39 @@ export default async function DashboardJobDetailPage({
     notFound();
   }
 
-  const isDeadlinePassed = new Date(job.deadline) < new Date();
+  // Get candidate profile to check for resume
+  const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
   const strapiUrl = getStrapiURL();
+  let candidateResumeId: number | null = null;
+  
+  if (strapiUrl) {
+    try {
+      const populateQuery = "populate[resume][fields][0]=id";
+      const profileResponse = await fetch(
+        `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}&${populateQuery}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (profileResponse.ok) {
+        const profileResult = await profileResponse.json();
+        const profile = Array.isArray(profileResult?.data) ? profileResult.data[0] : profileResult?.data;
+        if (profile?.resume?.id) {
+          candidateResumeId = profile.resume.id;
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching candidate resume:", error);
+    }
+  }
+
+  const isDeadlinePassed = new Date(job.deadline) < new Date();
   const companyLogoUrl = job.company ? resolveLogoUrl(job.company) : null;
 
   return (
@@ -203,20 +235,11 @@ export default async function DashboardJobDetailPage({
                 <CardTitle>Apply for this Job</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {isDeadlinePassed ? (
-                  <div className="text-center py-4">
-                    <p className="text-sm text-muted-foreground mb-4">
-                      This job posting has expired.
-                    </p>
-                    <Button variant="outline" disabled className="w-full">
-                      Application Closed
-                    </Button>
-                  </div>
-                ) : (
-                  <Button className="w-full" size="lg">
-                    Apply Now
-                  </Button>
-                )}
+                <ApplyButton 
+                  jobId={job.id} 
+                  isDeadlinePassed={isDeadlinePassed}
+                  candidateResumeId={candidateResumeId}
+                />
                 
                 <Button variant="outline" className="w-full">
                   Save Job

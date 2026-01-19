@@ -48,7 +48,7 @@ const candidateNavMain = [
   },
   {
     title: "Applications",
-    url: "/dashboard/application",
+    url: "/dashboard/applications",
     icon: IconBriefcase,
   },
 ]
