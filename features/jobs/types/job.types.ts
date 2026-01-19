@@ -31,6 +31,7 @@ export type Job = {
     id: number;
     name: string;
     slug: string;
+    industry?: string;
     logo?: {
       id: number;
       url: string;

@@ -11,7 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PublicJobList } from "@/features/jobs";
+import { PublicJobList, JOB_TYPES } from "@/features/jobs";
+import { COMPANY_INDUSTRIES } from "@/features/companies";
 import type { Job } from "@/features/jobs/types/job.types";
 import type { Category } from "@/features/jobs/types/job.types";
 
@@ -26,22 +27,16 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedLocation, setSelectedLocation] = useState<string>("all");
   const [selectedJobType, setSelectedJobType] = useState<string>("all");
+  const [selectedIndustry, setSelectedIndustry] = useState<string>("all");
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>("all");
   const [showFeatured, setShowFeatured] = useState(false);
 
-  // Get unique locations and job types from jobs
+  // Get unique locations from jobs
   const locations = useMemo(() => {
     const locs = initialJobs
       .map((job) => job.location)
       .filter((loc): loc is string => Boolean(loc));
     return Array.from(new Set(locs)).sort();
-  }, [initialJobs]);
-
-  const jobTypes = useMemo(() => {
-    const types = initialJobs
-      .map((job) => job.jobType)
-      .filter((type): type is string => Boolean(type));
-    return Array.from(new Set(types)).sort();
   }, [initialJobs]);
 
   // Filter jobs based on search and filters
@@ -86,6 +81,11 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
       filtered = filtered.filter((job) => job.jobType === selectedJobType);
     }
 
+    // Industry filter
+    if (selectedIndustry !== "all") {
+      filtered = filtered.filter((job) => job.company?.industry === selectedIndustry);
+    }
+
     // Time range filter
     if (selectedTimeRange !== "all") {
       const now = new Date();
@@ -117,6 +117,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
     selectedCategory,
     selectedLocation,
     selectedJobType,
+    selectedIndustry,
     selectedTimeRange,
     showFeatured,
   ]);
@@ -133,6 +134,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
     setSelectedCategory("all");
     setSelectedLocation("all");
     setSelectedJobType("all");
+    setSelectedIndustry("all");
     setSelectedTimeRange("all");
     setShowFeatured(false);
   };
@@ -143,6 +145,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
       selectedCategory !== "all" ||
       selectedLocation !== "all" ||
       selectedJobType !== "all" ||
+      selectedIndustry !== "all" ||
       selectedTimeRange !== "all" ||
       showFeatured
     );
@@ -151,6 +154,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
     selectedCategory,
     selectedLocation,
     selectedJobType,
+    selectedIndustry,
     selectedTimeRange,
     showFeatured,
   ]);
@@ -231,9 +235,23 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Types</SelectItem>
-                {jobTypes.map((type) => (
+                {JOB_TYPES.map((type) => (
                   <SelectItem key={type} value={type}>
                     {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
+              <SelectTrigger className="w-[140px] bg-background/10 text-foreground border-background/20">
+                <SelectValue placeholder="Industry" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Industries</SelectItem>
+                {COMPANY_INDUSTRIES.map((industry) => (
+                  <SelectItem key={industry} value={industry}>
+                    {industry}
                   </SelectItem>
                 ))}
               </SelectContent>

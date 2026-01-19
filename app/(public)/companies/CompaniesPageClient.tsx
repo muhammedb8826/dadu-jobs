@@ -1,11 +1,16 @@
 "use client";
 
-"use client";
-
 import * as React from "react";
-import { CompanyList } from "@/features/companies";
+import { CompanyList, COMPANY_INDUSTRIES } from "@/features/companies";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Search, Menu } from "lucide-react";
 import type { Company } from "@/features/companies";
 
@@ -22,23 +27,32 @@ export function CompaniesPageClient({
 }: CompaniesPageClientProps) {
   const [activeTab, setActiveTab] = React.useState<"featured" | "all">("featured");
   const [searchQuery, setSearchQuery] = React.useState("");
+  const [selectedIndustry, setSelectedIndustry] = React.useState<string>("all");
 
-  // Filter companies based on search query
+  // Filter companies based on search query and industry
   const filteredCompanies = React.useMemo(() => {
-    const companiesToShow = activeTab === "featured" ? initialFeaturedCompanies : initialCompanies;
+    let companiesToShow = activeTab === "featured" ? initialFeaturedCompanies : initialCompanies;
     
-    if (!searchQuery.trim()) {
-      return companiesToShow;
+    // Industry filter
+    if (selectedIndustry !== "all") {
+      companiesToShow = companiesToShow.filter(
+        (company) => company.industry === selectedIndustry
+      );
     }
 
-    const query = searchQuery.toLowerCase();
-    return companiesToShow.filter(
-      (company) =>
-        company.name.toLowerCase().includes(query) ||
-        company.industry?.toLowerCase().includes(query) ||
-        company.location?.toLowerCase().includes(query)
-    );
-  }, [initialCompanies, initialFeaturedCompanies, activeTab, searchQuery]);
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      companiesToShow = companiesToShow.filter(
+        (company) =>
+          company.name.toLowerCase().includes(query) ||
+          company.industry?.toLowerCase().includes(query) ||
+          company.location?.toLowerCase().includes(query)
+      );
+    }
+
+    return companiesToShow;
+  }, [initialCompanies, initialFeaturedCompanies, activeTab, searchQuery, selectedIndustry]);
 
   return (
     <div className="container mx-auto px-4 py-8 lg:px-8">
@@ -70,6 +84,19 @@ export function CompaniesPageClient({
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All Industries" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Industries</SelectItem>
+              {COMPANY_INDUSTRIES.map((industry) => (
+                <SelectItem key={industry} value={industry}>
+                  {industry}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <div className="relative flex-1 sm:flex-initial sm:min-w-[300px]">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
