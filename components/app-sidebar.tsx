@@ -38,7 +38,7 @@ const candidateNavMain = [
   },
   {
     title: "Candidate Profile",
-    url: "/dashboard/candidate-profile/complete",
+    url: "/dashboard/candidate-profile",
     icon: IconFileText,
   },
   {

@@ -578,7 +578,7 @@ export default async function DashboardPage() {
                       </Link>
                     </Button>
                     <Button asChild variant="outline">
-                      <Link href="/dashboard/profile">
+                      <Link href="/dashboard/candidate-profile">
                         <User className="mr-2 h-4 w-4" />
                         View Profile
                       </Link>
@@ -610,14 +610,14 @@ export default async function DashboardPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 <Button asChild variant="outline" className="w-full">
-                  <Link href={hasProfile ? "/dashboard/candidate-profile/complete" : "/dashboard/candidate-profile/complete"}>
+                  <Link href={hasProfile ? "/dashboard/candidate-profile" : "/dashboard/candidate-profile/complete"}>
                     <User className="mr-2 h-4 w-4" />
-                    {hasProfile ? "Edit Profile" : "Complete Profile"}
+                    {hasProfile ? "View Profile" : "Complete Profile"}
                   </Link>
                 </Button>
                 {hasProfile && (
                   <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/profile">
+                    <Link href="/dashboard/candidate-profile">
                       <FileText className="mr-2 h-4 w-4" />
                       View Profile
                     </Link>
@@ -917,7 +917,7 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/profile">
+                    <Link href={session.userType === UserType.CANDIDATE ? "/dashboard/candidate-profile" : "/dashboard/profile"}>
                       <User className="mr-2 h-4 w-4" />
                       My Profile
                     </Link>
@@ -926,7 +926,7 @@ export default async function DashboardPage() {
                     <Button asChild variant="outline" className="w-full">
                       <Link href="/dashboard/candidate-profile/complete">
                         <FileText className="mr-2 h-4 w-4" />
-                        Complete Candidate Profile
+                        Edit Candidate Profile
                       </Link>
                     </Button>
                   )}
