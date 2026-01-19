@@ -13,6 +13,7 @@ import {
   updateJob,
   deleteJob,
 } from "@/features/jobs/api/job.api";
+import { WORKPLACE_TYPES, EXPERIENCE_LEVELS, APPROVAL_STATUSES } from "@/features/jobs/constants/job.constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -172,12 +173,12 @@ export async function POST(request: NextRequest) {
       slug,
       description,
       deadline,
-      workplaceType: workplaceType || "On Site",
+      workplaceType: workplaceType || WORKPLACE_TYPES[1], // Default to "On Site"
       isFeatured: isFeatured || false,
       isActive: isActive !== undefined ? isActive : true,
-      experience: experience || "Entry",
+      experience: experience || EXPERIENCE_LEVELS[0], // Default to "Entry"
       user: userId,
-      approvalStatus: "Pending",
+      approvalStatus: APPROVAL_STATUSES[0], // Default to "Pending"
       jobCode,
     };
 

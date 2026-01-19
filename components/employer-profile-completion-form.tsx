@@ -19,6 +19,7 @@ import { CheckCircle2, Loader2, AlertCircle, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { COMPANY_INDUSTRIES } from "@/features/companies/constants/company.constants";
 
 type SocialLink = {
   id?: number;
@@ -730,16 +731,11 @@ export function EmployerProfileCompletionForm({
                   <SelectValue placeholder="Select industry" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Technology">Technology</SelectItem>
-                  <SelectItem value="Healthcare">Healthcare</SelectItem>
-                  <SelectItem value="Finance">Finance</SelectItem>
-                  <SelectItem value="Education">Education</SelectItem>
-                  <SelectItem value="Manufacturing">Manufacturing</SelectItem>
-                  <SelectItem value="Retail">Retail</SelectItem>
-                  <SelectItem value="Hospitality">Hospitality</SelectItem>
-                  <SelectItem value="Construction">Construction</SelectItem>
-                  <SelectItem value="Consulting">Consulting</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
+                  {COMPANY_INDUSTRIES.map((industry: string) => (
+                    <SelectItem key={industry} value={industry}>
+                      {industry}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -19,6 +19,7 @@ import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Category, JobFormData } from "../types/job.types";
+import { WORKPLACE_TYPES, JOB_TYPES, EXPERIENCE_LEVELS } from "../constants/job.constants";
 
 export function JobPostingForm({ jobId }: { jobId?: number | string }) {
   const router = useRouter();
@@ -34,10 +35,10 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
     location: "",
     jobType: "",
     deadline: "",
-    workplaceType: "On Site",
+    workplaceType: WORKPLACE_TYPES[1], // Default to "On Site"
     isFeatured: false,
     isActive: true,
-    experience: "Entry",
+    experience: EXPERIENCE_LEVELS[0], // Default to "Entry"
     salaryMin: "",
     salaryMax: "",
     salaryCurrency: "ETB",
@@ -366,11 +367,11 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
                   <SelectValue placeholder="Select job type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Full Time">Full Time</SelectItem>
-                  <SelectItem value="Part Time">Part Time</SelectItem>
-                  <SelectItem value="Contract">Contract</SelectItem>
-                  <SelectItem value="Internship">Internship</SelectItem>
-                  <SelectItem value="Temporary">Temporary</SelectItem>
+                  {JOB_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -390,9 +391,11 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="On Site">On Site</SelectItem>
-                  <SelectItem value="Remote">Remote</SelectItem>
-                  <SelectItem value="Hybrid">Hybrid</SelectItem>
+                  {WORKPLACE_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -410,9 +413,11 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Entry">Entry</SelectItem>
-                  <SelectItem value="Mid">Mid</SelectItem>
-                  <SelectItem value="Senior">Senior</SelectItem>
+                  {EXPERIENCE_LEVELS.map((level) => (
+                    <SelectItem key={level} value={level}>
+                      {level}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
