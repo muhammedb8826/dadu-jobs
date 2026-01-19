@@ -1,22 +1,25 @@
 import { getStrapiURL } from "@/lib/strapi/client";
 import type { Job, Category } from "../types/job.types";
 
-// Populate categories and company with only needed fields (not * to avoid invalid relations)
+// Populate query - use * for company but explicitly populate nested relations
 // Note: Regular fields like title, description, location, etc. are returned by default
-const POPULATE_QUERY = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company][fields][0]=id&populate[company][fields][1]=name&populate[company][fields][2]=slug&populate[user][fields][0]=id";
+// Same approach as employer profiles API route
+const POPULATE_QUERY = "populate[categories][fields][0]=id&populate[categories][fields][1]=name&populate[categories][fields][2]=slug&populate[salary]=*&populate[company]=*&populate[company][populate][logo][fields][0]=id&populate[company][populate][logo][fields][1]=url&populate[company][populate][logo][fields][2]=name&populate[company][populate][logo][fields][3]=alternativeText&populate[company][populate][logo][fields][4]=formats&populate[company][populate][socialLinks]=*&populate[user][fields][0]=id";
 
 /**
  * Get authentication headers for Strapi API calls
+ * Prioritize user JWT over API token (same as employer profiles API route)
  */
 function getAuthHeaders(apiToken?: string, userJwt?: string): HeadersInit {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
 
-  if (apiToken) {
-    headers["Authorization"] = `Bearer ${apiToken}`;
-  } else if (userJwt) {
+  // Prioritize user JWT if available (ensures we get all fields the user has access to)
+  if (userJwt) {
     headers["Authorization"] = `Bearer ${userJwt}`;
+  } else if (apiToken) {
+    headers["Authorization"] = `Bearer ${apiToken}`;
   }
 
   return headers;

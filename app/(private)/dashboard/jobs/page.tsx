@@ -20,7 +20,7 @@ export default async function JobsPage() {
     redirect("/dashboard");
   }
 
-  const jobs = await getJobs(Number(session.userId));
+  const jobs = await getJobs(Number(session.userId), session.jwt);
 
   // Debug: Log jobs to see what's being fetched
   console.log("Fetched jobs:", jobs);
