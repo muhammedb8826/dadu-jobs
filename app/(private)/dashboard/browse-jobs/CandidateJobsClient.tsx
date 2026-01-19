@@ -22,9 +22,15 @@ import type { Category } from "@/features/jobs/types/job.types";
 interface CandidateJobsClientProps {
   initialJobs: Job[];
   categories: Category[];
+  appliedJobIds: number[];
+  savedJobIds: number[];
 }
 
-export function CandidateJobsClient({ initialJobs, categories }: CandidateJobsClientProps) {
+export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, savedJobIds }: CandidateJobsClientProps) {
+  // Create a Set for fast lookup of applied jobs
+  const appliedJobsSet = useMemo(() => new Set(appliedJobIds), [appliedJobIds]);
+  // Create a Set for fast lookup of saved jobs
+  const savedJobsSet = useMemo(() => new Set(savedJobIds), [savedJobIds]);
   const [searchTerm, setSearchTerm] = useState("");
   const [location, setLocation] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
@@ -366,7 +372,13 @@ export function CandidateJobsClient({ initialJobs, categories }: CandidateJobsCl
                 }
               >
                 {filteredJobs.map((job) => (
-                  <CandidateJobCard key={job.id} job={job} viewMode={viewMode} />
+                  <CandidateJobCard 
+                    key={job.id} 
+                    job={job} 
+                    viewMode={viewMode}
+                    isApplied={appliedJobsSet.has(job.id)}
+                    isSaved={savedJobsSet.has(job.id)}
+                  />
                 ))}
               </div>
             )}

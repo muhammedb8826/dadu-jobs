@@ -47,3 +47,49 @@ export async function getApplications(userId: number, sessionJwt?: string): Prom
     return [];
   }
 }
+
+/**
+ * Get job IDs that a user has applied to
+ */
+export async function getAppliedJobIds(userId: number): Promise<Set<number>> {
+  try {
+    const strapiUrl = getStrapiURL();
+    if (!strapiUrl) {
+      return new Set();
+    }
+
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    
+    // Only populate the job id field for performance
+    const url = `${strapiUrl}/api/applications?filters[user][id][$eq]=${userId}&populate[job][fields][0]=id`;
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+      },
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return new Set();
+    }
+
+    const result = await response.json();
+    const applications = result?.data || [];
+    
+    // Extract job IDs into a Set for fast lookup
+    const jobIds = new Set<number>();
+    applications.forEach((app: Application) => {
+      if (app.job?.id) {
+        jobIds.add(app.job.id);
+      }
+    });
+    
+    return jobIds;
+  } catch (error) {
+    console.error("Error fetching applied job IDs:", error);
+    return new Set();
+  }
+}

@@ -3,16 +3,18 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { MapPin, Calendar, Bookmark } from "lucide-react";
+import { MapPin, Calendar, CheckCircle2 } from "lucide-react";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
 import type { Job } from "@/features/jobs/types/job.types";
+import { SaveButton } from "./SaveButton";
 
 interface CandidateJobCardProps {
   job: Job;
   viewMode: "grid" | "list";
+  isApplied?: boolean;
+  isSaved?: boolean;
 }
 
 function formatDate(dateString: string | undefined): string {
@@ -65,7 +67,7 @@ function resolveLogoUrl(company: Job["company"]): string | null {
   return resolveImageUrl(logo, strapiBaseUrl) || null;
 }
 
-export function CandidateJobCard({ job, viewMode }: CandidateJobCardProps) {
+export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = false }: CandidateJobCardProps) {
   const logoUrl = resolveLogoUrl(job.company);
   const salaryText = formatSalary(job.salary);
   const publishedDate = formatDate(job.publishedAt);
@@ -105,9 +107,14 @@ export function CandidateJobCard({ job, viewMode }: CandidateJobCardProps) {
                     <h3 className="text-lg font-semibold text-foreground truncate">
                       {job.title}
                     </h3>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
-                      <Bookmark className="h-4 w-4" />
-                    </Button>
+                    {isApplied ? (
+                      <Badge variant="default" className="gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Applied
+                      </Badge>
+                    ) : (
+                      <SaveButton jobId={job.id} initialSaved={isSaved} />
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
                     {job.company?.name}
@@ -143,9 +150,6 @@ export function CandidateJobCard({ job, viewMode }: CandidateJobCardProps) {
                   {salaryText && (
                     <p className="text-lg font-bold text-primary">{salaryText}</p>
                   )}
-                  <Button variant="outline" size="sm" disabled>
-                    Applied
-                  </Button>
                 </div>
               </div>
             </div>
@@ -186,9 +190,14 @@ export function CandidateJobCard({ job, viewMode }: CandidateJobCardProps) {
               </p>
             </div>
           </div>
-          <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
-            <Bookmark className="h-4 w-4" />
-          </Button>
+          {isApplied ? (
+            <Badge variant="default" className="gap-1 shrink-0">
+              <CheckCircle2 className="h-3 w-3" />
+              Applied
+            </Badge>
+          ) : (
+            <SaveButton jobId={job.id} initialSaved={isSaved} />
+          )}
         </div>
 
         <div className="space-y-3">
@@ -219,14 +228,11 @@ export function CandidateJobCard({ job, viewMode }: CandidateJobCardProps) {
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-2 border-t">
-            {salaryText && (
+          {salaryText && (
+            <div className="flex items-center justify-between pt-2 border-t">
               <p className="text-base font-bold text-primary">{salaryText}</p>
-            )}
-            <Button variant="outline" size="sm" disabled>
-              Applied
-            </Button>
-          </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

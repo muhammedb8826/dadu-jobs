@@ -12,6 +12,7 @@ import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { ApplyButton } from "./ApplyButton";
+import { SaveButton } from "../SaveButton";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -112,6 +113,54 @@ export default async function DashboardJobDetailPage({
       }
     } catch (error) {
       console.error("Error fetching candidate resume:", error);
+    }
+  }
+
+  // Check if user has already applied to this job
+  let hasApplied = false;
+  let isSaved = false;
+  if (strapiUrl) {
+    try {
+      const applicationResponse = await fetch(
+        `${strapiUrl}/api/applications?filters[user][id][$eq]=${session.userId}&filters[job][id][$eq]=${job.id}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (applicationResponse.ok) {
+        const applicationResult = await applicationResponse.json();
+        hasApplied = applicationResult?.data && applicationResult.data.length > 0;
+      }
+    } catch (error) {
+      console.error("Error checking application status:", error);
+    }
+
+    // Check if user has saved this job
+    try {
+      const savedJobResponse = await fetch(
+        `${strapiUrl}/api/saved-jobs?filters[user][id][$eq]=${session.userId}&filters[job][id][$eq]=${job.id}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (savedJobResponse.ok) {
+        const savedJobResult = await savedJobResponse.json();
+        isSaved = savedJobResult?.data && savedJobResult.data.length > 0;
+      }
+    } catch (error) {
+      console.error("Error checking saved job status:", error);
     }
   }
 
@@ -239,11 +288,10 @@ export default async function DashboardJobDetailPage({
                   jobId={job.id} 
                   isDeadlinePassed={isDeadlinePassed}
                   candidateResumeId={candidateResumeId}
+                  hasApplied={hasApplied}
                 />
                 
-                <Button variant="outline" className="w-full">
-                  Save Job
-                </Button>
+                <SaveButton jobId={job.id} variant="button" initialSaved={isSaved} />
               </CardContent>
             </Card>
 

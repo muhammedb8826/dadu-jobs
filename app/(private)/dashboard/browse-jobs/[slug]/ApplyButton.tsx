@@ -13,16 +13,17 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ApplyButtonProps {
   jobId: number;
   isDeadlinePassed: boolean;
   candidateResumeId?: number | null;
+  hasApplied?: boolean;
 }
 
-export function ApplyButton({ jobId, isDeadlinePassed, candidateResumeId }: ApplyButtonProps) {
+export function ApplyButton({ jobId, isDeadlinePassed, candidateResumeId, hasApplied = false }: ApplyButtonProps) {
   const [open, setOpen] = useState(false);
   const [coverLetter, setCoverLetter] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -69,6 +70,23 @@ export function ApplyButton({ jobId, isDeadlinePassed, candidateResumeId }: Appl
       setIsSubmitting(false);
     }
   };
+
+  if (hasApplied) {
+    return (
+      <div className="text-center py-4">
+        <Alert className="mb-4">
+          <CheckCircle2 className="h-4 w-4" />
+          <AlertDescription>
+            You have already applied to this job. View your application status in the Applications page.
+          </AlertDescription>
+        </Alert>
+        <Button variant="outline" disabled className="w-full gap-2">
+          <CheckCircle2 className="h-4 w-4" />
+          Already Applied
+        </Button>
+      </div>
+    );
+  }
 
   if (isDeadlinePassed) {
     return (

@@ -3,6 +3,7 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  IconBookmark,
   IconBriefcase,
   IconChartBar,
   IconDashboard,
@@ -11,7 +12,6 @@ import {
   IconInnerShadowTop,
   IconSearch,
   IconSettings,
-  IconUser,
   IconUsers,
 } from "@tabler/icons-react"
 import { UserType } from "@/lib/types/user.types"
@@ -40,6 +40,11 @@ const candidateNavMain = [
     title: "Browse Jobs",
     url: "/dashboard/browse-jobs",
     icon: IconSearch,
+  },
+  {
+    title: "Saved Jobs",
+    url: "/dashboard/saved-jobs",
+    icon: IconBookmark,
   },
   {
     title: "Candidate Profile",
