@@ -57,7 +57,7 @@ const employerNavMain = [
   },
   {
     title: "Employer Profile",
-    url: "/dashboard/employer-profile/complete",
+    url: "/dashboard/employer-profile",
     icon: IconFileText,
   },
   {

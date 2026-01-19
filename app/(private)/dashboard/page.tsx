@@ -15,7 +15,8 @@ import {
   GraduationCap,
   Award,
   Mail,
-  Phone
+  Phone,
+  Plus
 } from "lucide-react"
 
 import { getSession } from "@/lib/auth/session"
@@ -24,7 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { getStrapiURL } from "@/lib/strapi/client"
 import { UserType } from "@/lib/types/user.types"
-import { isCandidate } from "@/lib/auth/rbac"
+import { isCandidate, isEmployer } from "@/lib/auth/rbac"
 import { resolveImageUrl } from "@/lib/strapi/media"
 
 function getInitials(firstName: string, email: string): string {
@@ -204,6 +205,242 @@ export default async function DashboardPage() {
     email: session.email,
     avatar: "",
     initials: getInitials(session.firstName, session.email),
+  }
+
+  // If user is an employer, show employer dashboard
+  if (isEmployer(session)) {
+    // Fetch employer profile to check if it exists
+    const strapiUrl = getStrapiURL();
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    let employerProfile = null;
+    let hasProfile = false;
+    let hasCompany = false;
+
+    if (strapiUrl) {
+      try {
+        const userId = Number(session.userId);
+        const populateQuery =
+          "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=name&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&" +
+          "populate[company][fields][0]=id&populate[company][fields][1]=documentId&populate[company][fields][2]=name";
+        
+        const response = await fetch(
+          `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+              ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+            },
+            cache: "no-store",
+          }
+        );
+
+        if (response.ok) {
+          const result = await response.json().catch(() => ({}));
+          if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
+            employerProfile = result.data[0];
+            hasProfile = true;
+            hasCompany = !!employerProfile.company;
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching employer profile:", error);
+      }
+    }
+
+    const profilePictureUrl = employerProfile?.profilePicture && strapiUrl
+      ? resolveImageUrl(employerProfile.profilePicture, strapiUrl)
+      : null;
+
+    return (
+      <div className="flex min-h-screen flex-col bg-muted/20">
+        {/* Profile header */}
+        <header className="flex items-center gap-4 border-b bg-background px-6 py-4">
+          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-muted text-lg font-semibold text-primary/80">
+            {profilePictureUrl ? (
+              <Image
+                src={profilePictureUrl}
+                alt={user.name}
+                width={64}
+                height={64}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <span>{user.initials}</span>
+            )}
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-xl font-semibold text-foreground">
+              Welcome back, {employerProfile?.fullName || user.name}!
+            </h1>
+            <p className="text-sm text-muted-foreground">{user.email}</p>
+          </div>
+        </header>
+
+        {/* Main content */}
+        <div className="flex flex-1 flex-col gap-6 px-4 py-6 lg:px-8">
+          {/* Profile Status Card */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Employer Profile</CardTitle>
+                  <CardDescription>
+                    {hasProfile 
+                      ? "Manage your profile and company information"
+                      : "Complete your employer profile to start posting jobs"}
+                  </CardDescription>
+                </div>
+                {hasProfile && (
+                  <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                    <CheckCircle2 className="mr-1 h-3 w-3" />
+                    Profile Created
+                  </Badge>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {hasProfile ? (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Full Name</p>
+                      <p className="text-sm font-medium">
+                        {employerProfile.fullName || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Job Title</p>
+                      <p className="text-sm font-medium">
+                        {employerProfile.jobTitle || "Not provided"}
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">Company</p>
+                      <p className="text-sm font-medium">
+                        {hasCompany ? (
+                          <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400">
+                            <CheckCircle2 className="mr-1 h-3 w-3" />
+                            {employerProfile.company?.name || "Linked"}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">Not linked</Badge>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-4 border-t">
+                    <Button asChild>
+                      <Link href="/dashboard/employer-profile/edit">
+                        <User className="mr-2 h-4 w-4" />
+                        Edit Profile
+                      </Link>
+                    </Button>
+                    {hasCompany ? (
+                      <Button asChild variant="outline">
+                        <Link href="/dashboard/company/edit">
+                          <Briefcase className="mr-2 h-4 w-4" />
+                          Edit Company
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button asChild variant="outline">
+                        <Link href="/dashboard/employer-profile/complete">
+                          <Briefcase className="mr-2 h-4 w-4" />
+                          Create Company
+                        </Link>
+                      </Button>
+                    )}
+                    <Button asChild variant="outline">
+                      <Link href="/dashboard/employer-profile">
+                        <FileText className="mr-2 h-4 w-4" />
+                        View Full Profile
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    You haven&apos;t created your employer profile yet. Create your profile and company information to start posting jobs.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button asChild>
+                      <Link href="/dashboard/employer-profile/complete">
+                        <User className="mr-2 h-4 w-4" />
+                        Create Profile
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Quick Actions */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Profile</CardTitle>
+                <CardDescription>Manage your employer profile</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={hasProfile ? "/dashboard/employer-profile/edit" : "/dashboard/employer-profile/complete"}>
+                    <User className="mr-2 h-4 w-4" />
+                    {hasProfile ? "Edit Profile" : "Create Profile"}
+                  </Link>
+                </Button>
+                {hasProfile && (
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href="/dashboard/employer-profile">
+                      <FileText className="mr-2 h-4 w-4" />
+                      View Full Profile
+                    </Link>
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Company</CardTitle>
+                <CardDescription>Manage your company information</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href={hasCompany ? "/dashboard/company/edit" : "/dashboard/employer-profile/complete"}>
+                    <Briefcase className="mr-2 h-4 w-4" />
+                    {hasCompany ? "Edit Company" : "Create Company"}
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Job Postings</CardTitle>
+                <CardDescription>Manage your job postings</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard/jobs">
+                    <Briefcase className="mr-2 h-4 w-4" />
+                    View Jobs
+                  </Link>
+                </Button>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard/jobs/new">
+                    <Plus className="mr-2 h-4 w-4" />
+                    Post New Job
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // If user is a candidate, show candidate dashboard

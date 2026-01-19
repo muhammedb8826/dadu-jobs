@@ -43,8 +43,24 @@ type EmployerProfileFormData = {
   socialLinks: SocialLink[];
 };
 
-export function EmployerProfileCompletionForm() {
+type EmployerProfileSection = "profile" | "company" | "social";
+
+type EmployerProfileCompletionFormProps = {
+  sections?: EmployerProfileSection[];
+  showCancel?: boolean;
+  redirectPath?: string | null;
+};
+
+export function EmployerProfileCompletionForm({
+  sections = ["profile", "company", "social"],
+  showCancel = true,
+  redirectPath = "/dashboard",
+}: EmployerProfileCompletionFormProps) {
   const router = useRouter();
+  const visibleSections = new Set(sections);
+  const showProfileSection = visibleSections.has("profile");
+  const showCompanySection = visibleSections.has("company");
+  const showSocialSection = visibleSections.has("social");
   const [isLoading, setIsLoading] = useState(true);
   const [isSavingCompany, setIsSavingCompany] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -474,8 +490,10 @@ export function EmployerProfileCompletionForm() {
       setProfileSaveSuccess(true);
       setTimeout(() => {
         setProfileSaveSuccess(false);
-        router.push("/dashboard");
-        router.refresh();
+        if (redirectPath) {
+          router.push(redirectPath);
+          router.refresh();
+        }
       }, 2000);
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -516,111 +534,114 @@ export function EmployerProfileCompletionForm() {
       )}
 
       {/* Personal Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Personal Information</CardTitle>
-          <CardDescription>Your personal and professional details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="fullName">
-              Full Name <span className="text-destructive">*</span>
-            </Label>
-            <Input
-              id="fullName"
-              value={formData.fullName}
-              onChange={(e) => handleInputChange("fullName", e.target.value)}
-              placeholder="e.g., John Doe"
-              required
-            />
-          </div>
+      {showProfileSection && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Personal Information</CardTitle>
+            <CardDescription>Your personal and professional details</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="fullName">
+                Full Name <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="fullName"
+                value={formData.fullName}
+                onChange={(e) => handleInputChange("fullName", e.target.value)}
+                placeholder="e.g., John Doe"
+                required
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="jobTitle">Job Title</Label>
-            <Input
-              id="jobTitle"
-              value={formData.jobTitle}
-              onChange={(e) => handleInputChange("jobTitle", e.target.value)}
-              placeholder="e.g., HR Manager"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="jobTitle">Job Title</Label>
+              <Input
+                id="jobTitle"
+                value={formData.jobTitle}
+                onChange={(e) => handleInputChange("jobTitle", e.target.value)}
+                placeholder="e.g., HR Manager"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number</Label>
-            <Input
-              id="phone"
-              value={formData.phone}
-              onChange={(e) => handleInputChange("phone", e.target.value)}
-              placeholder="e.g., 0912345678"
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                value={formData.phone}
+                onChange={(e) => handleInputChange("phone", e.target.value)}
+                placeholder="e.g., 0912345678"
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="bio">Bio</Label>
-            <Textarea
-              id="bio"
-              value={formData.bio}
-              onChange={(e) => handleInputChange("bio", e.target.value)}
-              placeholder="Tell us about yourself..."
-              rows={4}
-            />
-          </div>
+            <div className="space-y-2">
+              <Label htmlFor="bio">Bio</Label>
+              <Textarea
+                id="bio"
+                value={formData.bio}
+                onChange={(e) => handleInputChange("bio", e.target.value)}
+                placeholder="Tell us about yourself..."
+                rows={4}
+              />
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="profilePicture">Profile Picture</Label>
-            <div className="flex items-center gap-4">
-              {profilePictureUrl && (
-                <div className="relative h-20 w-20 overflow-hidden rounded-full border">
-                  <Image
-                    src={profilePictureUrl}
-                    alt="Profile"
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              )}
-              <div className="flex-1">
-                <Input
-                  id="profilePicture"
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePictureUpload}
-                  disabled={isUploadingPicture}
-                  className="cursor-pointer"
-                />
-                {isUploadingPicture && (
-                  <p className="text-sm text-muted-foreground mt-1">Uploading...</p>
+            <div className="space-y-2">
+              <Label htmlFor="profilePicture">Profile Picture</Label>
+              <div className="flex items-center gap-4">
+                {profilePictureUrl && (
+                  <div className="relative h-20 w-20 overflow-hidden rounded-full border">
+                    <Image
+                      src={profilePictureUrl}
+                      alt="Profile"
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                 )}
+                <div className="flex-1">
+                  <Input
+                    id="profilePicture"
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePictureUpload}
+                    disabled={isUploadingPicture}
+                    className="cursor-pointer"
+                  />
+                  {isUploadingPicture && (
+                    <p className="text-sm text-muted-foreground mt-1">Uploading...</p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex justify-end pt-4 border-t">
-            <Button 
-              type="button" 
-              onClick={handleSaveProfile}
-              disabled={isSavingCompany || isSavingProfile}
-            >
-              {isSavingProfile ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving Profile...
-                </>
-              ) : (
-                "Save Profile"
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex justify-end pt-4 border-t">
+              <Button 
+                type="button" 
+                onClick={handleSaveProfile}
+                disabled={isSavingCompany || isSavingProfile}
+              >
+                {isSavingProfile ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving Profile...
+                  </>
+                ) : (
+                  "Save Profile"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Company Information */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Company Information</CardTitle>
-          <CardDescription>Details about your company</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {showCompanySection && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Company Information</CardTitle>
+            <CardDescription>Details about your company</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="companyName">
               Company Name <span className="text-destructive">*</span>
@@ -752,91 +773,96 @@ export function EmployerProfileCompletionForm() {
             </div>
           </div>
 
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Social Links */}
-      <Card>
-        <CardHeader>
-          <div className="flex justify-between items-center">
-            <div>
-              <CardTitle>Social Links</CardTitle>
-              <CardDescription>Add your company&apos;s social media links</CardDescription>
+      {showSocialSection && (
+        <Card>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>Social Links</CardTitle>
+                <CardDescription>Add your company&apos;s social media links</CardDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addSocialLink}
+              >
+                <Plus className="w-4 h-4 mr-1" /> Add Link
+              </Button>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={addSocialLink}
-            >
-              <Plus className="w-4 h-4 mr-1" /> Add Link
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {formData.socialLinks.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No social links added yet.</p>
-          ) : (
-            <div className="space-y-4">
-              {formData.socialLinks.map((link, index) => (
-                <div key={index} className="flex gap-4 items-end border-b pb-4 last:border-0">
-                  <div className="flex-1 space-y-2">
-                    <Label>Label</Label>
-                    <Input
-                      value={link.label}
-                      onChange={(e) => updateSocialLink(index, "label", e.target.value)}
-                      placeholder="e.g., Facebook, Twitter, LinkedIn"
-                    />
+          </CardHeader>
+          <CardContent>
+            {formData.socialLinks.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No social links added yet.</p>
+            ) : (
+              <div className="space-y-4">
+                {formData.socialLinks.map((link, index) => (
+                  <div key={index} className="flex gap-4 items-end border-b pb-4 last:border-0">
+                    <div className="flex-1 space-y-2">
+                      <Label>Label</Label>
+                      <Input
+                        value={link.label}
+                        onChange={(e) => updateSocialLink(index, "label", e.target.value)}
+                        placeholder="e.g., Facebook, Twitter, LinkedIn"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <Label>URL</Label>
+                      <Input
+                        value={link.url}
+                        onChange={(e) => updateSocialLink(index, "url", e.target.value)}
+                        placeholder="https://example.com"
+                        type="url"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => removeSocialLink(index)}
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <Label>URL</Label>
-                    <Input
-                      value={link.url}
-                      onChange={(e) => updateSocialLink(index, "url", e.target.value)}
-                      placeholder="https://example.com"
-                      type="url"
-                    />
-                  </div>
-                  <Button
-                    type="button"
-                    onClick={() => removeSocialLink(index)}
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
 
-          <div className="flex justify-end pt-4 border-t mt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleSaveCompany}
-              disabled={isSavingCompany || isSavingProfile}
-            >
-              {isSavingCompany ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving Company...
-                </>
-              ) : (
-                "Save Company"
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex justify-end pt-4 border-t mt-4">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleSaveCompany}
+                disabled={isSavingCompany || isSavingProfile}
+              >
+                {isSavingCompany ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving Company...
+                  </>
+                ) : (
+                  "Save Company"
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Cancel Button */}
-      <div className="flex justify-end">
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-      </div>
+      {showCancel && (
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => router.back()}>
+            Cancel
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
