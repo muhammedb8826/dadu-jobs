@@ -31,6 +31,13 @@ export type Job = {
     id: number;
     name: string;
     slug: string;
+    logo?: {
+      id: number;
+      url: string;
+      name?: string;
+      alternativeText?: string;
+      formats?: Record<string, { url: string }>;
+    };
   };
   user?: {
     id: number;

@@ -12,6 +12,8 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { MapPin, Calendar, Building2, Bookmark, Zap } from "lucide-react";
+import Image from "next/image";
+import { resolveImageUrl } from "@/lib/strapi/media";
 import type { Job } from "../types/job.types";
 
 function formatDate(dateString: string): string {
@@ -51,11 +53,34 @@ function stripHtml(html: string): string {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
 }
 
+function resolveLogoUrl(company: Job["company"], strapiBaseUrl?: string): string | null {
+  if (!company?.logo || !strapiBaseUrl) {
+    return null;
+  }
+
+  // Handle case where logo might be an array (Strapi sometimes returns arrays)
+  const logo = Array.isArray(company.logo) ? company.logo[0] : company.logo;
+  
+  if (!logo || !logo.url) {
+    return null;
+  }
+
+  // If logo URL is already absolute, use it directly
+  if (logo.url.startsWith("http://") || logo.url.startsWith("https://")) {
+    return logo.url;
+  }
+
+  // Use the existing resolveImageUrl utility
+  return resolveImageUrl(logo, strapiBaseUrl) || null;
+}
+
 interface PublicJobListProps {
   jobs: Job[];
 }
 
 export function PublicJobList({ jobs }: PublicJobListProps) {
+  const strapiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+
   if (jobs.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -79,6 +104,9 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
           : descriptionText;
         const hasMoreContent = descriptionText.length > SUMMARY_LENGTH;
         
+        // Resolve company logo URL
+        const logoUrl = resolveLogoUrl(job.company, strapiBaseUrl);
+        
         return (
           <Card key={job.id} className="relative">
             <CardContent className="p-6">
@@ -91,13 +119,13 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                         New
                       </Badge>
                     )}
-                    <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                    {/* <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
                       Premium
                     </Badge>
                     <Badge className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/20">
                       <Zap className="h-3 w-3 mr-1" />
                       Easy Apply
-                    </Badge>
+                    </Badge> */}
                   </div>
 
                   {/* Category Badges */}
@@ -134,8 +162,18 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                     {/* Company Logo/Info on Right - aligned with title */}
                     {job.company && (
                       <div className="flex flex-col items-end gap-2 shrink-0">
-                        <div className="w-20 h-20 bg-primary/10 rounded-lg flex items-center justify-center">
-                          <Building2 className="h-8 w-8 text-primary" />
+                        <div className="w-20 h-20 bg-primary/10 rounded-lg overflow-hidden flex items-center justify-center">
+                          {logoUrl ? (
+                            <Image
+                              src={logoUrl}
+                              alt={Array.isArray(job.company?.logo) ? job.company.logo[0]?.alternativeText || job.company?.name : job.company?.logo?.alternativeText || job.company?.name || "Company logo"}
+                              width={80}
+                              height={80}
+                              className="object-contain w-full h-full"
+                            />
+                          ) : (
+                            <Building2 className="h-8 w-8 text-primary" />
+                          )}
                         </div>
                         <p className="text-xs text-muted-foreground text-right max-w-[100px]">
                           {job.company.name}
