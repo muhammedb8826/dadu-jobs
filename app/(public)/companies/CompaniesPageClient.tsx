@@ -55,7 +55,7 @@ export function CompaniesPageClient({
   }, [initialCompanies, initialFeaturedCompanies, activeTab, searchQuery, selectedIndustry]);
 
   return (
-    <div className="container mx-auto px-4 py-8 lg:px-8">
+    <div className="container mx-auto max-w-7xl px-4 py-8 lg:px-8">
       {/* Header with Tabs and Search */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
         <div className="flex gap-4">

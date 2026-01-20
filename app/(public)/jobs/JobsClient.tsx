@@ -163,7 +163,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
     <div className="w-full">
       {/* Green Header Section */}
       <div className="bg-primary text-primary-foreground py-12">
-        <div className="container mx-auto px-4 lg:px-8">
+        <div className="container mx-auto max-w-7xl px-4 lg:px-8">
           <h1 className="text-3xl font-bold text-center mb-8">
             Find Your Dream Job in Ethiopia
           </h1>
@@ -276,7 +276,7 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
       </div>
 
       {/* Content Section */}
-      <div className="container mx-auto px-4 py-8 lg:px-8">
+      <div className="container mx-auto max-w-7xl px-4 py-8 lg:px-8">
         <div className="flex items-center justify-between mb-6">
           <div className="flex gap-4">
             <Button
