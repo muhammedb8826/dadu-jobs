@@ -37,11 +37,6 @@ const candidateNavMain = [
     icon: IconDashboard,
   },
   {
-    title: "Browse Jobs",
-    url: "/dashboard/browse-jobs",
-    icon: IconSearch,
-  },
-  {
     title: "Saved Jobs",
     url: "/dashboard/saved-jobs",
     icon: IconBookmark,

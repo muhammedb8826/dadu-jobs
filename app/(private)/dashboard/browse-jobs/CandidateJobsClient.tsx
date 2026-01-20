@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { Search, MapPin, Grid3x3, List, Bookmark, Calendar } from "lucide-react";
+import { Search, MapPin, Grid3x3, List, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -26,7 +26,7 @@ interface CandidateJobsClientProps {
   savedJobIds: number[];
 }
 
-export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, savedJobIds }: CandidateJobsClientProps) {
+export function CandidateJobsClient({ initialJobs, appliedJobIds, savedJobIds }: CandidateJobsClientProps) {
   // Create a Set for fast lookup of applied jobs
   const appliedJobsSet = useMemo(() => new Set(appliedJobIds), [appliedJobIds]);
   // Create a Set for fast lookup of saved jobs
@@ -41,14 +41,8 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
   const [minSalary, setMinSalary] = useState("");
   const [maxSalary, setMaxSalary] = useState("");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-
-  // Get unique locations from jobs
-  const locations = useMemo(() => {
-    const locs = initialJobs
-      .map((job) => job.location)
-      .filter((loc): loc is string => Boolean(loc));
-    return Array.from(new Set(locs)).sort();
-  }, [initialJobs]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(12); // Show 12 jobs per page
 
   // Filter jobs based on search and filters
   const filteredJobs = useMemo(() => {
@@ -122,10 +116,17 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
     maxSalary,
   ]);
 
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredJobs.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = startIndex + itemsPerPage;
+  const paginatedJobs = filteredJobs.slice(startIndex, endIndex);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setActiveSearchTerm(searchTerm);
     setActiveLocation(location);
+    setCurrentPage(1); // Reset to first page on search
   };
 
   const handleClearFilters = () => {
@@ -164,28 +165,36 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
     setSelectedJobTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     );
+    setCurrentPage(1); // Reset to first page on filter change
   };
 
   const toggleWorkplaceType = (type: string) => {
     setSelectedWorkplaceTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     );
+    setCurrentPage(1); // Reset to first page on filter change
+  };
+
+  const goToPage = (page: number) => {
+    setCurrentPage(Math.max(1, Math.min(page, totalPages)));
+    // Scroll to top of job list
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
       {/* Header Section */}
-      <header className="border-b bg-background px-6 py-8">
+      <header className="border-b bg-background px-4 sm:px-6 py-6 sm:py-8">
         <div className="container mx-auto">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
             Find Your Dream Job
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm sm:text-base text-muted-foreground">
             Discover opportunities that match your passion
           </p>
 
           {/* Search Bar */}
-          <form onSubmit={handleSearch} className="mt-6 flex gap-3">
+          <form onSubmit={handleSearch} className="mt-4 sm:mt-6 flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -206,7 +215,7 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
                 onChange={(e) => setLocation(e.target.value)}
               />
             </div>
-            <Button type="submit" size="lg" className="h-12 px-8">
+            <Button type="submit" size="lg" className="h-12 px-8 w-full sm:w-auto">
               Search Jobs
             </Button>
           </form>
@@ -214,12 +223,12 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
       </header>
 
       {/* Main Content */}
-      <div className="flex flex-1 gap-6 px-6 py-6">
+      <div className="flex flex-col lg:flex-row flex-1 gap-6 px-4 sm:px-6 py-4 sm:py-6">
         {/* Left Sidebar - Filters */}
-        <aside className="w-80 space-y-6">
-          <div className="bg-background rounded-lg border p-6">
+        <aside className="w-full lg:w-80 space-y-6">
+          <div className="bg-background rounded-lg border p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Filter Jobs</h2>
+              <h2 className="text-base sm:text-lg font-semibold">Filter Jobs</h2>
               {hasActiveFilters && (
                 <Button
                   variant="link"
@@ -282,7 +291,13 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
             {/* Industry Filter */}
             <div className="space-y-3 mb-6">
               <Label className="text-sm font-medium">Industry</Label>
-              <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
+              <Select 
+                value={selectedIndustry} 
+                onValueChange={(value) => {
+                  setSelectedIndustry(value);
+                  setCurrentPage(1); // Reset to first page on filter change
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="All Industries" />
                 </SelectTrigger>
@@ -310,7 +325,10 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
                     type="number"
                     placeholder="Min"
                     value={minSalary}
-                    onChange={(e) => setMinSalary(e.target.value)}
+                    onChange={(e) => {
+                      setMinSalary(e.target.value);
+                      setCurrentPage(1); // Reset to first page on filter change
+                    }}
                     className="mt-1"
                   />
                 </div>
@@ -323,7 +341,10 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
                     type="number"
                     placeholder="Max"
                     value={maxSalary}
-                    onChange={(e) => setMaxSalary(e.target.value)}
+                    onChange={(e) => {
+                      setMaxSalary(e.target.value);
+                      setCurrentPage(1); // Reset to first page on filter change
+                    }}
                     className="mt-1"
                   />
                 </div>
@@ -334,11 +355,11 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
 
         {/* Main Content Area */}
         <main className="flex-1">
-          <div className="bg-background rounded-lg border p-6">
+          <div className="bg-background rounded-lg border p-4 sm:p-6">
             {/* Header with count and view toggle */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0 mb-6">
               <p className="text-sm text-muted-foreground">
-                Showing {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredJobs.length)} of {filteredJobs.length} {filteredJobs.length === 1 ? "job" : "jobs"}
               </p>
               <div className="flex items-center gap-2">
                 <Button
@@ -364,23 +385,90 @@ export function CandidateJobsClient({ initialJobs, categories, appliedJobIds, sa
                 <p className="text-muted-foreground">No jobs found matching your criteria.</p>
               </div>
             ) : (
-              <div
-                className={
-                  viewMode === "grid"
-                    ? "grid grid-cols-2 gap-4"
-                    : "space-y-4"
-                }
-              >
-                {filteredJobs.map((job) => (
-                  <CandidateJobCard 
-                    key={job.id} 
-                    job={job} 
-                    viewMode={viewMode}
-                    isApplied={appliedJobsSet.has(job.id)}
-                    isSaved={savedJobsSet.has(job.id)}
-                  />
-                ))}
-              </div>
+              <>
+                <div
+                  className={
+                    viewMode === "grid"
+                      ? "grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6"
+                      : "space-y-4"
+                  }
+                >
+                  {paginatedJobs.map((job) => (
+                    <CandidateJobCard 
+                      key={job.id} 
+                      job={job} 
+                      viewMode={viewMode}
+                      isApplied={appliedJobsSet.has(job.id)}
+                      isSaved={savedJobsSet.has(job.id)}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-6 sm:mt-8 pt-4 sm:pt-6 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="text-xs sm:text-sm"
+                    >
+                      <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
+                      <span className="hidden xs:inline">Previous</span>
+                      <span className="xs:hidden">Prev</span>
+                    </Button>
+
+                    <div className="flex items-center gap-1 order-last sm:order-0 w-full sm:w-auto justify-center mt-2 sm:mt-0">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        const showPage =
+                          page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1);
+
+                        const showEllipsis =
+                          (page === currentPage - 2 && currentPage > 3) ||
+                          (page === currentPage + 2 && currentPage < totalPages - 2);
+
+                        if (showEllipsis) {
+                          return (
+                            <span key={page} className="px-2 text-muted-foreground">
+                              ...
+                            </span>
+                          );
+                        }
+
+                        if (!showPage) return null;
+
+                        return (
+                          <Button
+                            key={page}
+                            variant={currentPage === page ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => goToPage(page)}
+                            className="min-w-10"
+                          >
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="text-xs sm:text-sm"
+                    >
+                      <span className="hidden xs:inline">Next</span>
+                      <span className="xs:hidden">Next</span>
+                      <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4 ml-1" />
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </main>

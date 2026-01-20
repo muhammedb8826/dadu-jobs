@@ -77,14 +77,14 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
 
   if (viewMode === "list") {
     return (
-      <Link href={`/dashboard/browse-jobs/${job.slug}`}>
+      <Link href={`/dashboard/browse-jobs/${job.slug}`} className="block">
         <Card className="hover:shadow-md transition-shadow cursor-pointer">
-          <CardContent className="p-6">
-          <div className="flex items-start gap-4">
+          <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row items-start gap-4">
             {/* Company Logo */}
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               {logoUrl ? (
-                <div className="relative h-16 w-16 rounded-lg overflow-hidden bg-muted">
+                <div className="relative h-12 w-12 sm:h-16 sm:w-16 rounded-lg overflow-hidden bg-muted">
                   <Image
                     src={logoUrl}
                     alt={job.company?.name || "Company"}
@@ -93,47 +93,50 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
                   />
                 </div>
               ) : (
-                <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold text-lg">
+                <div className="h-12 w-12 sm:h-16 sm:w-16 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold text-base sm:text-lg">
                   {job.company?.name?.substring(0, 2).toUpperCase() || "CO"}
                 </div>
               )}
             </div>
 
             {/* Job Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-lg font-semibold text-foreground truncate">
+            <div className="flex-1 min-w-0 w-full">
+              <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-3 sm:gap-4">
+                <div className="flex-1 min-w-0 w-full sm:w-auto">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
+                    <h3 className="text-base sm:text-lg font-semibold text-foreground">
                       {job.title}
                     </h3>
-                    {isApplied ? (
-                      <Badge variant="default" className="gap-1">
+                    {isApplied && (
+                      <Badge variant="default" className="gap-1 w-fit">
                         <CheckCircle2 className="h-3 w-3" />
                         Applied
                       </Badge>
-                    ) : (
-                      <SaveButton jobId={job.id} initialSaved={isSaved} />
+                    )}
+                    {!isApplied && (
+                      <div className="sm:hidden">
+                        <SaveButton jobId={job.id} initialSaved={isSaved} />
+                      </div>
                     )}
                   </div>
                   <p className="text-sm text-muted-foreground mb-2">
                     {job.company?.name}
                   </p>
-                  <div className="flex items-center gap-4 flex-wrap">
+                  <div className="flex items-center gap-3 sm:gap-4 flex-wrap text-xs sm:text-sm">
                     {job.location && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        <span>{job.location}</span>
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <MapPin className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
+                        <span className="truncate">{job.location}</span>
                       </div>
                     )}
                     {publishedDate && (
-                      <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Calendar className="h-4 w-4" />
+                      <div className="flex items-center gap-1 text-muted-foreground">
+                        <Calendar className="h-3 w-3 sm:h-4 sm:w-4 shrink-0" />
                         <span>{publishedDate}</span>
                       </div>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-3">
+                  <div className="flex items-center gap-2 mt-3 flex-wrap">
                     {job.jobType && (
                       <Badge variant="secondary" className="text-xs">
                         {job.jobType}
@@ -146,9 +149,14 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
                     )}
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                <div className="flex flex-row sm:flex-col items-center sm:items-end justify-between sm:justify-start gap-2 shrink-0 w-full sm:w-auto mt-2 sm:mt-0">
                   {salaryText && (
-                    <p className="text-lg font-bold text-primary">{salaryText}</p>
+                    <p className="text-base sm:text-lg font-bold text-primary whitespace-nowrap">{salaryText}</p>
+                  )}
+                  {!isApplied && (
+                    <div className="hidden sm:block">
+                      <SaveButton jobId={job.id} initialSaved={isSaved} />
+                    </div>
                   )}
                 </div>
               </div>
@@ -162,13 +170,13 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
 
   // Grid view
   return (
-    <Link href={`/dashboard/browse-jobs/${job.slug}`}>
-      <Card className="hover:shadow-md transition-shadow cursor-pointer">
+    <Link href={`/dashboard/browse-jobs/${job.slug}`} className="block h-full">
+      <Card className="hover:shadow-md transition-shadow cursor-pointer h-full">
         <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-3">
             {logoUrl ? (
-              <div className="relative h-12 w-12 rounded-lg overflow-hidden bg-muted flex-shrink-0">
+              <div className="relative h-12 w-12 rounded-lg overflow-hidden bg-muted shrink-0">
                 <Image
                   src={logoUrl}
                   alt={job.company?.name || "Company"}
@@ -177,7 +185,7 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
                 />
               </div>
             ) : (
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold flex-shrink-0">
+              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold shrink-0">
                 {job.company?.name?.substring(0, 2).toUpperCase() || "CO"}
               </div>
             )}
@@ -203,7 +211,7 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
         <div className="space-y-3">
           {job.location && (
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <MapPin className="h-4 w-4 flex-shrink-0" />
+              <MapPin className="h-4 w-4 shrink-0" />
               <span className="truncate">{job.location}</span>
             </div>
           )}
