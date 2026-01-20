@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, MapPin, Calendar, Building2, DollarSign, Clock, Briefcase } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { JobActions } from "./JobActions";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -68,7 +69,7 @@ export default async function JobDetailPage({
   const isDeadlinePassed = new Date(job.deadline) < new Date();
 
   return (
-    <div className="container mx-auto px-4 py-8 lg:px-8">
+    <div className="container mx-auto max-w-7xl px-4 py-8 lg:px-8">
       <Button asChild variant="ghost" className="mb-6">
         <Link href="/jobs">
           <ArrowLeft className="mr-2 h-4 w-4" />
@@ -179,25 +180,12 @@ export default async function JobDetailPage({
             <CardHeader>
               <CardTitle>Apply for this Job</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {isDeadlinePassed ? (
-                <div className="text-center py-4">
-                  <p className="text-sm text-muted-foreground mb-4">
-                    This job posting has expired.
-                  </p>
-                  <Button variant="outline" disabled className="w-full">
-                    Application Closed
-                  </Button>
-                </div>
-              ) : (
-                <Button className="w-full" size="lg">
-                  Apply Now
-                </Button>
-              )}
-              
-              <Button variant="outline" className="w-full">
-                Save Job
-              </Button>
+            <CardContent>
+              <JobActions
+                jobId={job.id}
+                jobSlug={job.slug}
+                isDeadlinePassed={isDeadlinePassed}
+              />
             </CardContent>
           </Card>
 

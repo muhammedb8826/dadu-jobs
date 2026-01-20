@@ -32,7 +32,34 @@ export async function GET(request: NextRequest) {
 
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
+    const { searchParams } = new URL(request.url);
+    const jobId = searchParams.get("jobId");
 
+    // If jobId is provided, check if that specific job is saved
+    if (jobId) {
+      const checkUrl = `${strapiUrl}/api/saved-jobs?filters[user][id][$eq]=${userId}&filters[job][id][$eq]=${jobId}`;
+      const response = await fetch(checkUrl, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        return NextResponse.json(
+          { error: "Failed to check saved status" },
+          { status: response.status }
+        );
+      }
+
+      const result = await response.json();
+      const isSaved = result?.data && result.data.length > 0;
+      return NextResponse.json({ saved: isSaved }, { status: 200 });
+    }
+
+    // Otherwise, return all saved jobs
     // Build populate query to get full job details
     const populateQuery = "populate[job][populate][categories][fields][0]=id&populate[job][populate][categories][fields][1]=name&populate[job][populate][categories][fields][2]=slug&populate[job][populate][salary]=*&populate[job][populate][company]=*&populate[job][populate][company][populate][logo][fields][0]=id&populate[job][populate][company][populate][logo][fields][1]=url&populate[job][populate][company][populate][logo][fields][2]=name&populate[job][populate][company][populate][logo][fields][3]=alternativeText&populate[job][populate][company][populate][logo][fields][4]=formats";
     
@@ -97,14 +124,15 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => null);
 
-    if (!body || !body.data) {
+    if (!body) {
       return NextResponse.json(
         { error: "Invalid request body" },
         { status: 400 }
       );
     }
 
-    const { jobId } = body.data;
+    // Support both { jobId } and { data: { jobId } } formats
+    const jobId = body.jobId || body.data?.jobId;
     const userId = Number(session.userId);
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
 
