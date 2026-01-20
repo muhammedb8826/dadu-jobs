@@ -7,6 +7,7 @@ import { UserType } from "@/lib/types/user.types";
 
 export type SessionData = {
   userId: string;
+  userDocumentId?: string; // Strapi v5 documentId for stable filtering
   email: string;
   firstName: string;
   userType?: UserType; // User type: EMPLOYER or CANDIDATE

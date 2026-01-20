@@ -38,8 +38,14 @@ export async function GET(request: NextRequest) {
     
     // If candidate wants to view their own profile
     if (myProfile && isCandidate(session)) {
-      const userId = Number(session.userId);
-      url = `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`;
+      // Prefer documentId for Strapi v5, fallback to numeric id for backward compatibility
+      if (session.userDocumentId) {
+        url = `${strapiUrl}/api/candidate-profiles?filters[user][documentId][$eq]=${session.userDocumentId}&${populateQuery}`;
+      } else {
+        // Fallback for sessions created before documentId was added
+        const userId = Number(session.userId);
+        url = `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`;
+      }
     } else if (candidateId) {
       // Employers can view any candidate, candidates can only view their own
       if (!isEmployer(session)) {

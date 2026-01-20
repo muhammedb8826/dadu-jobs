@@ -7,6 +7,7 @@ type StrapiAuthResponse = {
   jwt: string;
   user: {
     id: number;
+    documentId?: string; // Strapi v5 document ID
     username: string;
     email: string;
     confirmed?: boolean;
@@ -94,9 +95,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch full user data to get the type field
+    // Fetch full user data to get the type field and documentId
     // The auth/local endpoint may not return all fields, so we fetch the user separately
     let userType: UserType | undefined;
+    let userDocumentId: string | undefined;
     try {
       const userResponse = await fetch(`${strapiUrl}/api/users/${authData.user.id}`, {
         method: "GET",
@@ -112,15 +114,18 @@ export async function POST(request: NextRequest) {
         if (type === UserType.EMPLOYER || type === UserType.CANDIDATE) {
           userType = type as UserType;
         }
+        // Capture documentId for Strapi v5 filtering
+        userDocumentId = userData?.documentId as string | undefined;
       }
     } catch (error) {
-      console.error("Error fetching user type:", error);
-      // Continue without user type - it's optional
+      console.error("Error fetching user data:", error);
+      // Continue without user type/documentId - they're optional
     }
 
-    // Create session with user data from Strapi including JWT token and user type
+    // Create session with user data from Strapi including JWT token, user type, and documentId
     await createSession({
       userId: String(authData.user.id),
+      userDocumentId: userDocumentId, // Store Strapi v5 documentId for stable filtering
       email: authData.user.email,
       firstName: authData.user.firstName || authData.user.username || "",
       userType: userType, // Store user type for role-based access control
