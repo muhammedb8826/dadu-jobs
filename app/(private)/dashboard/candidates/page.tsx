@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { User, Mail, Phone, FileText } from "lucide-react";
+import { getEmployerApplications } from "@/features/jobs";
 
 type CandidateProfile = {
   id: number;
@@ -36,18 +37,34 @@ type CandidateProfile = {
   }>;
 };
 
-async function getCandidates(): Promise<CandidateProfile[]> {
+type CandidateRow = {
+  userId: number;
+  name: string;
+  email?: string;
+  profile?: CandidateProfile | null;
+};
+
+async function getCandidates(userIds: number[], sessionJwt?: string): Promise<CandidateProfile[]> {
   try {
     const strapiUrl = getStrapiURL();
     if (!strapiUrl) {
       return [];
     }
 
-    const response = await fetch(`${strapiUrl}/api/candidate-profiles?populate[skills]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=email&populate[user][fields][1]=username`, {
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    const inQuery = userIds.join(",");
+    const response = await fetch(`${strapiUrl}/api/candidate-profiles?filters[user][id][$in]=${inQuery}&populate[skills]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
-        ...(process.env.NEXT_PUBLIC_API_TOKEN && { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_TOKEN}` }),
+        ...(sessionJwt
+          ? { Authorization: `Bearer ${sessionJwt}` }
+          : process.env.NEXT_PUBLIC_API_TOKEN
+            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_TOKEN}` }
+            : {}),
       },
       cache: "no-store",
     });
@@ -163,8 +180,37 @@ export default async function CandidatesPage() {
 
   console.log("Access granted - loading candidates page");
 
-  const candidates = await getCandidates();
+  const applications = await getEmployerApplications(Number(session.userId), session.jwt);
+  const candidateUserIds = Array.from(
+    new Set(applications.map((application) => application.user?.id).filter(Boolean))
+  ) as number[];
+  const candidateProfiles = await getCandidates(candidateUserIds, session.jwt);
   const strapiUrl = getStrapiURL();
+
+  const candidates: CandidateRow[] = applications.reduce<CandidateRow[]>((acc, application) => {
+    const userId = application.user?.id;
+    if (!userId) {
+      return acc;
+    }
+
+    if (acc.some((candidate) => candidate.userId === userId)) {
+      return acc;
+    }
+
+    const profile =
+      candidateProfiles.find((candidate) => candidate.user?.email === application.user?.email) ||
+      candidateProfiles.find((candidate) => candidate.user?.username === application.user?.username) ||
+      null;
+
+    acc.push({
+      userId,
+      name: profile?.fullName || application.user?.username || "Candidate",
+      email: application.user?.email,
+      profile,
+    });
+
+    return acc;
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
@@ -185,79 +231,86 @@ export default async function CandidatesPage() {
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {candidates.map((candidate) => {
-              const profilePictureUrl = candidate.profilePicture && strapiUrl
-                ? resolveImageUrl(candidate.profilePicture, strapiUrl)
+              const profilePictureUrl = candidate.profile?.profilePicture && strapiUrl
+                ? resolveImageUrl(candidate.profile.profilePicture, strapiUrl)
                 : null;
 
               return (
-                <Card key={candidate.id} className="hover:shadow-md transition-shadow">
+                <Card key={candidate.userId} className="hover:shadow-md transition-shadow">
                   <CardHeader>
                     <div className="flex items-start gap-4">
                       {profilePictureUrl ? (
-                        <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-full border">
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-full border">
                           <Image
                             src={profilePictureUrl}
-                            alt={candidate.profilePicture?.alternativeText || candidate.fullName}
+                            alt={candidate.profile?.profilePicture?.alternativeText || candidate.name}
                             fill
                             className="object-cover"
                           />
                         </div>
                       ) : (
-                        <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">
-                          {candidate.fullName.substring(0, 2).toUpperCase()}
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold">
+                          {candidate.name.substring(0, 2).toUpperCase()}
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg">{candidate.fullName}</CardTitle>
-                        {candidate.user?.email && (
+                        <CardTitle className="text-lg">{candidate.name}</CardTitle>
+                        {candidate.email && (
                           <CardDescription className="flex items-center gap-1 mt-1">
                             <Mail className="h-3 w-3" />
-                            <span className="truncate">{candidate.user.email}</span>
+                            <span className="truncate">{candidate.email}</span>
                           </CardDescription>
                         )}
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {candidate.phone && (
+                    {candidate.profile?.phone && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Phone className="h-4 w-4" />
-                        <span>{candidate.phone}</span>
+                        <span>{candidate.profile.phone}</span>
                       </div>
                     )}
                     
-                    {candidate.bio && (
+                    {candidate.profile?.bio && (
                       <p className="text-sm text-muted-foreground line-clamp-3">
-                        {candidate.bio}
+                        {candidate.profile.bio}
                       </p>
                     )}
 
-                    {candidate.skills && candidate.skills.length > 0 && (
+                    {candidate.profile?.skills && candidate.profile.skills.length > 0 && (
                       <div className="flex flex-wrap gap-2">
-                        {candidate.skills.slice(0, 3).map((skill) => (
+                        {candidate.profile.skills.slice(0, 3).map((skill) => (
                           <Badge key={skill.id} variant="secondary">
                             {skill.skillName}
                           </Badge>
                         ))}
-                        {candidate.skills.length > 3 && (
+                        {candidate.profile.skills.length > 3 && (
                           <Badge variant="outline">
-                            +{candidate.skills.length - 3} more
+                            +{candidate.profile.skills.length - 3} more
                           </Badge>
                         )}
                       </div>
                     )}
 
                     <div className="flex gap-2 pt-2">
-                      <Button asChild variant="outline" className="flex-1">
-                        <Link href={`/dashboard/candidates/${candidate.documentId || candidate.id}`}>
+                      {candidate.profile ? (
+                        <Button asChild variant="outline" className="flex-1">
+                          <Link href={`/dashboard/candidates/${candidate.profile.documentId || candidate.profile.id}`}>
+                            <User className="mr-2 h-4 w-4" />
+                            View Profile
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Button variant="outline" className="flex-1" disabled>
                           <User className="mr-2 h-4 w-4" />
-                          View Profile
-                        </Link>
-                      </Button>
-                      {candidate.resume && (
+                          No Profile
+                        </Button>
+                      )}
+                      {candidate.profile?.resume && (
                         <Button asChild variant="ghost" size="icon">
                           <a
-                            href={`${strapiUrl}${candidate.resume.url}`}
+                            href={`${strapiUrl}${candidate.profile.resume.url}`}
                             target="_blank"
                             rel="noopener noreferrer"
                           >

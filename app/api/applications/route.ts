@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get("userId");
     const jobId = searchParams.get("jobId");
+    const jobDocumentId = searchParams.get("jobDocumentId");
 
     // Build populate query
     const populateQuery = "populate[job][populate][categories][fields][0]=id&populate[job][populate][categories][fields][1]=name&populate[job][populate][categories][fields][2]=slug&populate[job][populate][salary]=*&populate[job][populate][company]=*&populate[job][populate][company][populate][logo][fields][0]=id&populate[job][populate][company][populate][logo][fields][1]=url&populate[job][populate][company][populate][logo][fields][2]=name&populate[job][populate][company][populate][logo][fields][3]=alternativeText&populate[job][populate][company][populate][logo][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=username&populate[user][fields][2]=email&populate[user][fields][3]=type";
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest) {
 
     if (userId) {
       url = `${strapiUrl}/api/applications?filters[user][id][$eq]=${userId}&${populateQuery}&sort[0]=createdAt:desc`;
+    } else if (jobDocumentId) {
+      url = `${strapiUrl}/api/applications?filters[job][documentId][$eq]=${jobDocumentId}&${populateQuery}&sort[0]=createdAt:desc`;
     } else if (jobId) {
       url = `${strapiUrl}/api/applications?filters[job][id][$eq]=${jobId}&${populateQuery}&sort[0]=createdAt:desc`;
     }

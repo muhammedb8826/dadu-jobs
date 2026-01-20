@@ -71,6 +71,11 @@ const employerNavMain = [
     icon: IconBriefcase,
   },
   {
+    title: "Applications",
+    url: "/dashboard/applications",
+    icon: IconFileText,
+  },
+  {
     title: "Candidates",
     url: "/dashboard/candidates",
     icon: IconUsers,
@@ -133,10 +138,10 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
+              className="data-[slot=sidebar-menu-button]:p-1.5!"
             >
               <Link href="/dashboard">
-                <IconInnerShadowTop className="!size-5" />
+                <IconInnerShadowTop className="size-5!" />
                 <span className="text-base font-semibold">Dadu Jobs</span>
               </Link>
             </SidebarMenuButton>
