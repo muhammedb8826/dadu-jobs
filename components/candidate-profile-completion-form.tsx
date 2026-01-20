@@ -158,13 +158,24 @@ export function CandidateProfileCompletionForm({
     }
   }, [initialData]);
 
-  // Load existing profile (only in create mode, not edit mode)
+  // Load existing profile - REMOVED: No longer needed
+  // Create mode (/complete): Shows empty form
+  // Edit mode (/edit): Receives initialData from server
   useEffect(() => {
-    if (isEditMode || initialData) {
-      // Skip loading if we're in edit mode or have initial data
+    // If in create mode (isEditMode=false), just set loading to false
+    if (isEditMode === false) {
+      setIsLoading(false);
       return;
     }
 
+    // If in edit mode but no initialData, something went wrong
+    if (isEditMode && !initialData) {
+      console.error("Edit mode requires initialData");
+      setIsLoading(false);
+      return;
+    }
+
+    // This code path should never execute now, but keeping for safety
     const loadProfile = async () => {
       try {
         const response = await fetch("/api/candidate-profiles?myProfile=true");

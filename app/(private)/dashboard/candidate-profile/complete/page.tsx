@@ -30,7 +30,7 @@ export default async function CompleteCandidateProfilePage() {
       {/* Main content */}
       <div className="flex flex-1 flex-col gap-6 px-4 py-6 lg:px-8">
         <section className="flex-1">
-          <CandidateProfileCompletionForm />
+          <CandidateProfileCompletionForm isEditMode={false} />
         </section>
       </div>
     </div>
