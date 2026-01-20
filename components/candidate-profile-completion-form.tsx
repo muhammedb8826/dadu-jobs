@@ -61,32 +61,110 @@ type CandidateProfileFormData = {
   experience: Experience[];
 };
 
-export function CandidateProfileCompletionForm() {
+type CandidateProfile = {
+  id: number;
+  documentId: string;
+  fullName: string;
+  phone?: string;
+  bio?: string;
+  profilePicture?: {
+    id: number;
+    url: string;
+    formats?: Record<string, { url: string }>;
+    alternativeText?: string | null;
+  } | null;
+  resume?: {
+    id: number;
+    url: string;
+    name: string;
+  } | null;
+  skills?: Array<{
+    id: number;
+    skillName: string;
+    level: string;
+  }>;
+  education?: Array<Education>;
+  experience?: Array<Experience>;
+};
+
+type CandidateProfileCompletionFormProps = {
+  initialData?: CandidateProfile;
+  isEditMode?: boolean;
+};
+
+export function CandidateProfileCompletionForm({ 
+  initialData, 
+  isEditMode = false 
+}: CandidateProfileCompletionFormProps = {}) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isEditMode); // Skip loading if we have initial data
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
-  const [profileId, setProfileId] = useState<number | null>(null);
-  const [profileDocumentId, setProfileDocumentId] = useState<string | null>(null);
+  const [profileId, setProfileId] = useState<number | null>(initialData?.id || null);
+  const [profileDocumentId, setProfileDocumentId] = useState<string | null>(initialData?.documentId || null);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [isUploadingResume, setIsUploadingResume] = useState(false);
 
   const [formData, setFormData] = useState<CandidateProfileFormData>({
-    fullName: "",
-    phone: "",
-    bio: "",
-    profilePicture: null,
-    resume: null,
-    skills: [],
-    education: [],
-    experience: [],
+    fullName: initialData?.fullName || "",
+    phone: initialData?.phone || "",
+    bio: initialData?.bio || "",
+    profilePicture: initialData?.profilePicture?.id || null,
+    resume: initialData?.resume?.id || null,
+    skills: initialData?.skills?.map((s: { id: number; skillName: string; level: string }) => ({
+      id: s.id,
+      skillName: s.skillName,
+      level: s.level,
+    })) || [],
+    education: initialData?.education?.map((e: Education) => ({
+      id: e.id,
+      institution: e.institution,
+      degree: e.degree,
+      fieldOfStudy: e.fieldOfStudy,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      description: e.description,
+    })) || [],
+    experience: initialData?.experience?.map((e: Experience) => ({
+      id: e.id,
+      companyName: e.companyName,
+      jobTitle: e.jobTitle,
+      location: e.location,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      isCurrent: e.isCurrent,
+      description: e.description,
+    })) || [],
   });
 
-  // Load existing profile
+  // Initialize media URLs from initial data
   useEffect(() => {
+    if (initialData) {
+      const strapiUrl = getStrapiURL();
+      
+      if (initialData.profilePicture && strapiUrl) {
+        const imageUrl = resolveImageUrl(initialData.profilePicture, strapiUrl);
+        setProfilePictureUrl(imageUrl || null);
+      }
+      
+      if (initialData.resume && strapiUrl) {
+        setResumeUrl(`${strapiUrl}${initialData.resume.url}`);
+      }
+      
+      setIsLoading(false);
+    }
+  }, [initialData]);
+
+  // Load existing profile (only in create mode, not edit mode)
+  useEffect(() => {
+    if (isEditMode || initialData) {
+      // Skip loading if we're in edit mode or have initial data
+      return;
+    }
+
     const loadProfile = async () => {
       try {
         const response = await fetch("/api/candidate-profiles?myProfile=true");
@@ -149,7 +227,7 @@ export function CandidateProfileCompletionForm() {
     };
 
     loadProfile();
-  }, []);
+  }, [isEditMode, initialData]);
 
   const handleFileUpload = async (file: File, type: "picture" | "resume") => {
     if (type === "picture") {

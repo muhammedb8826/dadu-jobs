@@ -10,7 +10,6 @@ import { Separator } from "@/components/ui/separator";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { 
-  User, 
   Mail, 
   Phone, 
   FileText, 
@@ -195,7 +194,7 @@ export default async function CandidateProfilePage() {
             </p>
           </div>
           <Button asChild>
-            <Link href="/dashboard/candidate-profile/complete">
+            <Link href="/dashboard/candidate-profile/edit">
               <Edit className="mr-2 h-4 w-4" />
               Edit Profile
             </Link>

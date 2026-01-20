@@ -572,7 +572,7 @@ export default async function DashboardPage() {
                   </div>
                   <div className="flex gap-2 pt-4 border-t">
                     <Button asChild>
-                      <Link href="/dashboard/candidate-profile/complete">
+                      <Link href="/dashboard/candidate-profile/edit">
                         <FileText className="mr-2 h-4 w-4" />
                         Edit Profile
                       </Link>
