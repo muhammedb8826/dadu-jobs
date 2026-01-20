@@ -94,7 +94,7 @@ function formatDate(dateString: string | undefined): string {
   }
 }
 
-async function getCandidateProfile(userId: string): Promise<CandidateProfile | null> {
+async function getCandidateProfile(userId: string, userJwt?: string): Promise<CandidateProfile | null> {
   try {
     const strapiUrl = getStrapiURL();
     if (!strapiUrl) {
@@ -106,7 +106,8 @@ async function getCandidateProfile(userId: string): Promise<CandidateProfile | n
     // Build populate query for candidate profile
     const populateQuery = "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
     
-    // Fetch candidate profile directly from Strapi
+    // Fetch candidate profile directly from Strapi using user's JWT token
+    // User's JWT has the correct permissions to filter by user relation
     const userIdNum = Number(userId);
     const response = await fetch(
       `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userIdNum}&${populateQuery}`,
@@ -114,13 +115,15 @@ async function getCandidateProfile(userId: string): Promise<CandidateProfile | n
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          // Use user's JWT if available, fall back to API token
+          ...(userJwt ? { Authorization: `Bearer ${userJwt}` } : apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
         },
         cache: "no-store",
       }
     );
 
     if (!response.ok) {
+      console.error("Failed to fetch profile:", response.status, await response.text().catch(() => ''));
       return null;
     }
 
@@ -154,7 +157,7 @@ export default async function CandidateProfilePage() {
     redirect("/dashboard");
   }
 
-  const candidate = await getCandidateProfile(session.userId);
+  const candidate = await getCandidateProfile(session.userId, session.jwt);
   const strapiUrl = getStrapiURL();
 
   if (!candidate) {
