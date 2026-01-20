@@ -633,7 +633,7 @@ export default async function DashboardPage() {
               </CardHeader>
               <CardContent>
                 <Button asChild variant="outline" className="w-full">
-                  <Link href="/dashboard/application">
+                  <Link href="/dashboard/applications">
                     <Briefcase className="mr-2 h-4 w-4" />
                     My Applications
                   </Link>

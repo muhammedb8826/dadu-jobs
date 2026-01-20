@@ -80,11 +80,23 @@ export async function GET(request: NextRequest) {
     const result = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error("Strapi fetch error:", { status: response.status, error: result });
+      console.error("Strapi fetch error:", { 
+        status: response.status, 
+        error: result,
+        url: url,
+        session: { userId: session.userId, role: session.userType }
+      });
+      
       const errorMessage =
         result?.error?.message ||
+        result?.error ||
         result?.message ||
         "Failed to fetch candidate profiles";
+      
+      // Provide helpful message for permission errors
+      if (result?.error?.message?.includes("Invalid key")) {
+        console.error("PERMISSION ERROR: The Authenticated role needs 'find' permission on User (plugin::users-permissions.user) in Strapi Settings → Roles");
+      }
       
       return NextResponse.json(
         { error: errorMessage },
