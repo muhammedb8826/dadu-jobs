@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 import { CandidateProfileCompletionForm } from "@/components/candidate-profile-completion-form";
 import { isCandidate } from "@/lib/auth/rbac";
+import { getStrapiURL } from "@/lib/strapi/client";
 
 export default async function CompleteCandidateProfilePage() {
   const session = await getSession();
@@ -15,6 +16,38 @@ export default async function CompleteCandidateProfilePage() {
     redirect("/dashboard");
   }
 
+  // Check if profile already exists - if so, redirect to edit page
+  const strapiUrl = getStrapiURL();
+  const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+
+  if (strapiUrl) {
+    try {
+      const response = await fetch(
+        `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          },
+          cache: "no-store",
+        }
+      );
+
+      if (response.ok) {
+        const result = await response.json();
+        const profile = Array.isArray(result?.data) ? result.data[0] : result?.data;
+        
+        // If profile exists, redirect to edit page
+        if (profile) {
+          redirect("/dashboard/candidate-profile/edit");
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching candidate profile:", error);
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
       {/* Page header */}
@@ -23,7 +56,7 @@ export default async function CompleteCandidateProfilePage() {
           Complete Your Candidate Profile
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Fill in your profile information to help employers find you
+          Create your profile to start applying for jobs
         </p>
       </header>
 

@@ -91,7 +91,7 @@ export default async function DashboardJobDetailPage({
   
   if (strapiUrl) {
     try {
-      const populateQuery = "populate[resume][fields][0]=id";
+      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name";
       const profileResponse = await fetch(
         `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}&${populateQuery}`,
         {
@@ -106,10 +106,17 @@ export default async function DashboardJobDetailPage({
 
       if (profileResponse.ok) {
         const profileResult = await profileResponse.json();
+        console.log("Profile fetch result:", JSON.stringify(profileResult, null, 2));
         const profile = Array.isArray(profileResult?.data) ? profileResult.data[0] : profileResult?.data;
-        if (profile?.resume?.id) {
-          candidateResumeId = profile.resume.id;
+        console.log("Extracted profile:", JSON.stringify(profile, null, 2));
+        if (profile?.resume) {
+          console.log("Resume found:", profile.resume);
+          candidateResumeId = profile.resume.id || profile.resume;
+        } else {
+          console.log("No resume found in profile");
         }
+      } else {
+        console.error("Profile fetch failed with status:", profileResponse.status);
       }
     } catch (error) {
       console.error("Error fetching candidate resume:", error);

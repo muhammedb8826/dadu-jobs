@@ -147,7 +147,7 @@ export function ApplyButton({ jobId, isDeadlinePassed, candidateResumeId, hasApp
                   <AlertDescription>
                     You don&apos;t have a resume uploaded. Please upload one in your{" "}
                     <a
-                      href="/dashboard/candidate-profile/complete"
+                      href="/dashboard/candidate-profile/edit"
                       className="underline font-medium"
                       target="_blank"
                       rel="noopener noreferrer"
