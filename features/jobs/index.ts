@@ -1,6 +1,7 @@
 export { JobTable } from "./components/JobTable";
 export { JobPostingForm } from "./components/JobPostingForm";
 export { PublicJobList } from "./components/PublicJobList";
+export { SaveJobButton } from "./components/SaveJobButton";
 export { getJobs, getPublicJobs, getJobBySlug, getJobsByCompany } from "./services/job.service";
 export { getApplications, getEmployerApplications, getAppliedJobIds } from "./services/application.service";
 export { getSavedJobs, isJobSaved } from "./services/saved-job.service";

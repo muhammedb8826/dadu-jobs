@@ -63,7 +63,7 @@ export function JobActions({ jobId, jobSlug, isDeadlinePassed }: JobActionsProps
   const handleApply = () => {
     if (!session?.authenticated) {
       // Redirect to login, then to job detail in dashboard
-      router.push(`/auth/login?redirectTo=/dashboard/browse-jobs/${jobSlug}`);
+      router.push(`/login?redirectTo=/dashboard/browse-jobs/${jobSlug}`);
     } else {
       // Redirect to authenticated job page to apply
       router.push(`/dashboard/browse-jobs/${jobSlug}`);
@@ -73,7 +73,7 @@ export function JobActions({ jobId, jobSlug, isDeadlinePassed }: JobActionsProps
   const handleSaveJob = async () => {
     if (!session?.authenticated) {
       // Redirect to login
-      router.push(`/auth/login?redirectTo=/jobs/${jobSlug}`);
+      router.push(`/login?redirectTo=/jobs/${jobSlug}`);
       return;
     }
 

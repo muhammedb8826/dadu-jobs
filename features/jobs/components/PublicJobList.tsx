@@ -11,10 +11,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { MapPin, Calendar, Building2, Bookmark, Zap } from "lucide-react";
+import { MapPin, Calendar, Building2 } from "lucide-react";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import type { Job } from "../types/job.types";
+import { SaveJobButton } from "./SaveJobButton";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -225,9 +226,9 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                     </Accordion>
                   ) : null}
 
-                  {/* View Job Button */}
-                  <div className="mt-4">
-                    <Button asChild className="w-full sm:w-auto">
+                  {/* Action Buttons */}
+                  <div className="mt-4 flex gap-2">
+                    <Button asChild className="flex-1 sm:flex-initial">
                       <Link href={`/jobs/${job.slug}`}>
                         View Job
                       </Link>
@@ -235,15 +236,14 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                   </div>
                 </div>
 
-                {/* Bookmark Icon */}
-                <Button
+                {/* Save Job Button */}
+                <SaveJobButton
+                  jobId={job.id}
+                  jobSlug={job.slug}
                   variant="ghost"
                   size="icon"
                   className="absolute top-4 right-4 h-8 w-8"
-                  aria-label="Bookmark job"
-                >
-                  <Bookmark className="h-4 w-4" />
-                </Button>
+                />
               </div>
             </CardContent>
           </Card>
