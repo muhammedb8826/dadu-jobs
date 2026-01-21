@@ -24,6 +24,7 @@ type ApplicationReport = {
   writtenExam: number | null;
   interview: number | null;
   practical: number | null;
+  total: number;
   status: string;
   rank: number | null;
   decision: string;
@@ -247,6 +248,7 @@ export default async function JobReportPage({
                       <TableHead className="text-center">Written Exam</TableHead>
                       <TableHead className="text-center">Interview</TableHead>
                       <TableHead className="text-center">Practical</TableHead>
+                      <TableHead className="text-center">Total</TableHead>
                       <TableHead className="text-center">Status</TableHead>
                       <TableHead className="text-center">Decision</TableHead>
                     </TableRow>
@@ -262,6 +264,7 @@ export default async function JobReportPage({
                         <TableCell className="text-center">{app.writtenExam ?? '—'}</TableCell>
                         <TableCell className="text-center">{app.interview ?? '—'}</TableCell>
                         <TableCell className="text-center">{app.practical ?? '—'}</TableCell>
+                        <TableCell className="text-center font-semibold">{app.total}</TableCell>
                         <TableCell className="text-center">
                           <Badge variant={getStatusBadgeVariant(app.status)}>
                             {app.status}
