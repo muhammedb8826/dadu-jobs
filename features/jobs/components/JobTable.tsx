@@ -7,7 +7,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/data-table";
-import { MoreHorizontal, Pencil, Eye, Trash2, Users } from "lucide-react";
+import { MoreHorizontal, Pencil, Eye, Trash2, Users, FileBarChart } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -284,6 +284,15 @@ export function JobTable({ jobs }: JobTableProps) {
                 >
                   <Users className="mr-2 h-4 w-4" />
                   View Applications
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href={`/dashboard/jobs/${job.documentId || job.id}/report`}
+                  className="flex items-center"
+                >
+                  <FileBarChart className="mr-2 h-4 w-4" />
+                  View Report
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

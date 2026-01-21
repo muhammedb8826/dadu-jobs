@@ -6,7 +6,7 @@ import { getStrapiURL } from "@/lib/strapi/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Calendar, ArrowLeft, FileText, User } from "lucide-react";
+import { Calendar, ArrowLeft, FileText, User, Download } from "lucide-react";
 import type { Application } from "@/features/jobs/types/application.types";
 
 type Evaluation = {
@@ -55,6 +55,50 @@ function getDecisionBadgeVariant(decision: string | null | undefined): "default"
       return "destructive";
     default:
       return "outline";
+  }
+}
+
+async function getJobDetails(jobDocumentId: string, sessionJwt?: string): Promise<{ id: number; title: string } | null> {
+  try {
+    const strapiUrl = getStrapiURL();
+    if (!strapiUrl) {
+      return null;
+    }
+
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    const url = `${strapiUrl}/api/jobs?filters[documentId][$eq]=${jobDocumentId}`;
+    
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (sessionJwt) {
+      headers.Authorization = `Bearer ${sessionJwt}`;
+    } else if (apiToken) {
+      headers.Authorization = `Bearer ${apiToken}`;
+    }
+
+    const response = await fetch(url, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const result = await response.json();
+    if (result?.data?.[0]) {
+      return {
+        id: result.data[0].id,
+        title: result.data[0].title || "Job"
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching job details:", error);
+    return null;
   }
 }
 
@@ -155,6 +199,7 @@ export default async function JobApplicationsPage({
   }
 
   const { id } = await params;
+  const jobDetails = await getJobDetails(id, session.jwt);
   const applications = await getApplicationsForJob(id, session.jwt);
   const evaluations = await getEvaluationsForJob(id, session.jwt);
 
@@ -165,18 +210,31 @@ export default async function JobApplicationsPage({
     }
   });
 
+  const jobNumericId = jobDetails?.id;
+
   return (
     <div className="flex min-h-screen flex-col bg-muted/20">
       <header className="border-b bg-background px-6 py-4">
-        <Button asChild variant="ghost" className="mb-4">
-          <Link href="/dashboard/jobs">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Job Postings
-          </Link>
-        </Button>
+        <div className="flex items-center justify-between mb-4">
+          <Button asChild variant="ghost">
+            <Link href="/dashboard/jobs">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Job Postings
+            </Link>
+          </Button>
+          {jobNumericId && applications.length > 0 && (
+            <Button asChild variant="outline">
+              <a href={`/api/applications/report-excel/${jobNumericId}`} download>
+                <Download className="mr-2 h-4 w-4" />
+                Export to Excel
+              </a>
+            </Button>
+          )}
+        </div>
         <h1 className="text-xl font-semibold text-foreground">Applications</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Review applications and evaluations for this job
+          {applications.length > 0 && ` (${applications.length} ${applications.length === 1 ? 'application' : 'applications'})`}
         </p>
       </header>
 
@@ -219,8 +277,42 @@ export default async function JobApplicationsPage({
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Education Information */}
+                    {(application.selectedDegree || application.selectedFieldOfStudy || application.selectedCgpa || application.totalExperienceYears) && (
+                      <div className="rounded-md border bg-background p-4">
+                        <h3 className="text-sm font-semibold mb-3">Education & Experience</h3>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                          {application.selectedDegree && (
+                            <div>
+                              <span className="text-muted-foreground">Degree</span>
+                              <p className="font-medium">{application.selectedDegree}</p>
+                            </div>
+                          )}
+                          {application.selectedFieldOfStudy && (
+                            <div>
+                              <span className="text-muted-foreground">Field of Study</span>
+                              <p className="font-medium">{application.selectedFieldOfStudy}</p>
+                            </div>
+                          )}
+                          {application.selectedCgpa && (
+                            <div>
+                              <span className="text-muted-foreground">CGPA</span>
+                              <p className="font-medium">{application.selectedCgpa}</p>
+                            </div>
+                          )}
+                          {application.totalExperienceYears !== null && application.totalExperienceYears !== undefined && (
+                            <div>
+                              <span className="text-muted-foreground">Years of Study</span>
+                              <p className="font-medium">{application.totalExperienceYears} {application.totalExperienceYears === 1 ? 'year' : 'years'}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
                     {application.coverLetter && (
                       <div className="rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
+                        <h3 className="text-sm font-semibold mb-2">Cover Letter</h3>
                         {application.coverLetter}
                       </div>
                     )}

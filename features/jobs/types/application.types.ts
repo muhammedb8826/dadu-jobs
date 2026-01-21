@@ -9,6 +9,10 @@ export type Application = {
   decision?: string | null;
   applicationStatus: string;
   coverLetter?: string | null;
+  selectedDegree?: string | null;
+  selectedFieldOfStudy?: string | null;
+  selectedCgpa?: number | null;
+  totalExperienceYears?: number | null;
   job: Job;
   user: {
     id: number;
