@@ -194,7 +194,7 @@ export default async function JobReportPage({
   const applications = await getApplicationReport(jobDetails.documentId, session.jwt);
   console.log("[Report Page] Applications count:", applications.length);
 
-  const jobNumericId = jobDetails.id; // Keep numeric ID for Excel export
+  const jobDocumentId = jobDetails.documentId; // Use documentId for backend export
   const jobTitle = jobDetails.title;
 
   return (
@@ -207,9 +207,9 @@ export default async function JobReportPage({
               Back to Job Postings
             </Link>
           </Button>
-          {jobNumericId && applications.length > 0 && (
+          {jobDocumentId && applications.length > 0 && (
             <Button asChild variant="outline">
-              <a href={`/api/applications/report-excel/${jobNumericId}`} download>
+              <a href={`${getStrapiURL()}/api/applications/report-excel/${jobDocumentId}`} download>
                 <Download className="mr-2 h-4 w-4" />
                 Export to Excel
               </a>
