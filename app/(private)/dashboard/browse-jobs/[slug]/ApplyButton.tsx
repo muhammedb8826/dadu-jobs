@@ -31,6 +31,9 @@ export function ApplyButton({ jobId, isDeadlinePassed, candidateResumeId, hasApp
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
+  // Debug: Log the received prop
+  console.log('🔍 ApplyButton received candidateResumeId:', candidateResumeId, 'Type:', typeof candidateResumeId);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
