@@ -84,15 +84,31 @@ export default async function DashboardJobDetailPage({
     notFound();
   }
 
-  // Get candidate profile to check for resume
+  // Get candidate profile to check for resume, education, and experience
   const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
   const strapiUrl = getStrapiURL();
   let candidateResumeId: number | null = null;
+  let candidateEducation: Array<{
+    id?: number;
+    institution: string;
+    degree: string;
+    fieldOfStudy: string;
+    startDate: string;
+    endDate: string;
+  }> = [];
+  let candidateExperience: Array<{
+    id?: number;
+    companyName: string;
+    jobTitle: string;
+    startDate: string;
+    endDate?: string;
+    isCurrent?: boolean;
+  }> = [];
   
   if (strapiUrl) {
     try {
-      // Use the same populate query as the edit page for consistency
-      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size";
+      // Fetch profile with resume, education, and experience
+      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[education]=*&populate[experience]=*";
       const profileResponse = await fetch(
         `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}&${populateQuery}`,
         {
@@ -110,32 +126,26 @@ export default async function DashboardJobDetailPage({
         const profileResult = await profileResponse.json();
         const profile = Array.isArray(profileResult?.data) ? profileResult.data[0] : profileResult?.data;
         
-        // Debug logging
-        console.log('=== RESUME CHECK DEBUG ===');
-        console.log('Profile data:', profile);
-        console.log('Resume field:', profile?.resume);
-        console.log('Resume type:', typeof profile?.resume);
-        
         // Check for resume in various possible structures
         if (profile?.resume) {
           // Handle both { id: 123 } and direct ID formats
           if (typeof profile.resume === 'object' && profile.resume.id) {
             candidateResumeId = profile.resume.id;
-            console.log('✅ Resume found (object):', candidateResumeId);
           } else if (typeof profile.resume === 'number') {
             candidateResumeId = profile.resume;
-            console.log('✅ Resume found (number):', candidateResumeId);
-          } else {
-            console.log('⚠️ Resume exists but unexpected format:', profile.resume);
           }
-        } else {
-          console.log('❌ No resume field in profile');
         }
-        console.log('Final candidateResumeId:', candidateResumeId);
-        console.log('=========================');
+        
+        // Extract education and experience
+        if (profile?.education && Array.isArray(profile.education)) {
+          candidateEducation = profile.education;
+        }
+        if (profile?.experience && Array.isArray(profile.experience)) {
+          candidateExperience = profile.experience;
+        }
       }
     } catch (error) {
-      console.error("Error fetching candidate resume:", error);
+      console.error("Error fetching candidate profile:", error);
     }
   }
 
@@ -312,6 +322,8 @@ export default async function DashboardJobDetailPage({
                   isDeadlinePassed={isDeadlinePassed}
                   candidateResumeId={candidateResumeId}
                   hasApplied={hasApplied}
+                  education={candidateEducation}
+                  experience={candidateExperience}
                 />
                 
                 <SaveButton jobId={job.id} variant="button" initialSaved={isSaved} />

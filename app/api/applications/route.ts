@@ -108,7 +108,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { jobId, coverLetter, resumeId } = body.data;
+    const { 
+      jobId, 
+      coverLetter, 
+      resumeId,
+      selectedDegree,
+      selectedFieldOfStudy,
+      selectedCgpa,
+      totalExperienceYears
+    } = body.data;
     const userId = Number(session.userId);
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userJwt = session.jwt;
@@ -199,6 +207,23 @@ export async function POST(request: NextRequest) {
     if (resumeId) {
       // Media fields need numeric ID directly
       applicationData.resume = Number(resumeId);
+    }
+
+    // Add education and experience fields
+    if (selectedDegree) {
+      applicationData.selectedDegree = selectedDegree;
+    }
+
+    if (selectedFieldOfStudy) {
+      applicationData.selectedFieldOfStudy = selectedFieldOfStudy;
+    }
+
+    if (selectedCgpa !== null && selectedCgpa !== undefined) {
+      applicationData.selectedCgpa = Number(selectedCgpa);
+    }
+
+    if (totalExperienceYears !== null && totalExperienceYears !== undefined) {
+      applicationData.totalExperienceYears = Number(totalExperienceYears);
     }
 
     console.log("Application data to send:", JSON.stringify(applicationData, null, 2));
