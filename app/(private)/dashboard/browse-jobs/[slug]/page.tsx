@@ -91,7 +91,8 @@ export default async function DashboardJobDetailPage({
   
   if (strapiUrl) {
     try {
-      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name";
+      // Use the same populate query as the edit page for consistency
+      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size";
       const profileResponse = await fetch(
         `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}&${populateQuery}`,
         {
@@ -99,6 +100,7 @@ export default async function DashboardJobDetailPage({
           headers: {
             "Content-Type": "application/json",
             ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+            ...(session.jwt && { Authorization: `Bearer ${session.jwt}` }),
           },
           cache: "no-store",
         }
@@ -106,17 +108,31 @@ export default async function DashboardJobDetailPage({
 
       if (profileResponse.ok) {
         const profileResult = await profileResponse.json();
-        console.log("Profile fetch result:", JSON.stringify(profileResult, null, 2));
         const profile = Array.isArray(profileResult?.data) ? profileResult.data[0] : profileResult?.data;
-        console.log("Extracted profile:", JSON.stringify(profile, null, 2));
+        
+        // Debug logging
+        console.log('=== RESUME CHECK DEBUG ===');
+        console.log('Profile data:', profile);
+        console.log('Resume field:', profile?.resume);
+        console.log('Resume type:', typeof profile?.resume);
+        
+        // Check for resume in various possible structures
         if (profile?.resume) {
-          console.log("Resume found:", profile.resume);
-          candidateResumeId = profile.resume.id || profile.resume;
+          // Handle both { id: 123 } and direct ID formats
+          if (typeof profile.resume === 'object' && profile.resume.id) {
+            candidateResumeId = profile.resume.id;
+            console.log('✅ Resume found (object):', candidateResumeId);
+          } else if (typeof profile.resume === 'number') {
+            candidateResumeId = profile.resume;
+            console.log('✅ Resume found (number):', candidateResumeId);
+          } else {
+            console.log('⚠️ Resume exists but unexpected format:', profile.resume);
+          }
         } else {
-          console.log("No resume found in profile");
+          console.log('❌ No resume field in profile');
         }
-      } else {
-        console.error("Profile fetch failed with status:", profileResponse.status);
+        console.log('Final candidateResumeId:', candidateResumeId);
+        console.log('=========================');
       }
     } catch (error) {
       console.error("Error fetching candidate resume:", error);
