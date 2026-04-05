@@ -12,7 +12,7 @@ const nextConfig = {
       },
       {
         protocol: "https",
-        hostname: "jobs-portal.qenenia.com",
+        hostname: "jobs-portal.bluemoongt.com",
         pathname: "/uploads/**",
       },
     ],

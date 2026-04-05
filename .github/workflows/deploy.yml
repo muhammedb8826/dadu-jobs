@@ -25,7 +25,7 @@ jobs:
       run: |
         rm -f .env.production
         {
-          echo "NEXT_PUBLIC_API_BASE_URL=https://jobs-portal.qenenia.com";
+          echo "NEXT_PUBLIC_API_BASE_URL=https://jobs-portal.bluemoongt.com";
           echo "NEXT_PUBLIC_API_TOKEN=${{ secrets.NEXT_PUBLIC_API_TOKEN }}";
         } >> .env.production
 
