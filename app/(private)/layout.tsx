@@ -4,6 +4,9 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { getSession, validateSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
+/** Session-backed routes must not be statically prerendered at build time. */
+export const dynamic = "force-dynamic";
+
 function getInitials(firstName: string, email: string): string {
   if (firstName) {
     return firstName.substring(0, 2).toUpperCase();

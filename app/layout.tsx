@@ -39,7 +39,13 @@ async function fetchGlobal(): Promise<StrapiGlobal> {
       next: { revalidate: 300 },
     });
     if (!res.ok) return {};
-    return res.json();
+    const text = await res.text();
+    if (!text.trim()) return {};
+    try {
+      return JSON.parse(text) as StrapiGlobal;
+    } catch {
+      return {};
+    }
   } catch {
     return {};
   }

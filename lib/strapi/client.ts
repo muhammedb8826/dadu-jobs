@@ -108,9 +108,15 @@ export async function strapiFetch<TResponse>(
       );
     }
 
-    // Read the response body once
-    const data = await response.json();
-    return data;
+    const text = await response.text();
+    if (!text.trim()) {
+      return { data: null, meta: {} } as TResponse;
+    }
+    try {
+      return JSON.parse(text) as TResponse;
+    } catch {
+      return { data: null, meta: {} } as TResponse;
+    }
   } catch (error) {
     // Log error but return empty response structure to allow build/runtime to continue
     const errorMessage = error instanceof Error ? error.message : String(error);
