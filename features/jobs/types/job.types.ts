@@ -1,9 +1,11 @@
+import type { StrapiRichTextContent } from "@/lib/strapi/rich-text";
+
 export type Job = {
   id: number;
   documentId: string;
   title: string;
   slug: string;
-  description?: string;
+  description?: StrapiRichTextContent | string;
   jobCode?: string;
   location?: string;
   jobType?: string;

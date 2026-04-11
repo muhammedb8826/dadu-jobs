@@ -1,6 +1,7 @@
 import { getCompanyBySlug } from "@/features/companies";
 import { getJobsByCompany } from "@/features/jobs";
 import { getStrapiURL } from "@/lib/strapi/client";
+import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 import { CompanyDetailClient } from "./CompanyDetailClient";
 import { notFound } from "next/navigation";
 
@@ -14,10 +15,12 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     };
   }
 
+  const descriptionText = extractRichTextPlainText(company.description);
+
   return {
     title: `${company.name} | DADU Jobs`,
-    description: company.description 
-      ? company.description.replace(/<[^>]*>/g, "").substring(0, 160) 
+    description: descriptionText
+      ? descriptionText.substring(0, 160)
       : `Learn more about ${company.name}`,
   };
 }

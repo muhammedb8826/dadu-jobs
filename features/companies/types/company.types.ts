@@ -1,3 +1,5 @@
+import type { StrapiRichTextContent } from "@/lib/strapi/rich-text";
+
 export type Company = {
   id: number;
   documentId: string;
@@ -7,7 +9,7 @@ export type Company = {
   industry?: string;
   companySize?: string;
   location?: string;
-  description?: string;
+  description?: StrapiRichTextContent | string;
   tagline?: string;
   isFeatured?: boolean;
   logo?: {

@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { StrapiRichText } from "@/components/StrapiRichText";
+import type { StrapiRichTextContent } from "@/lib/strapi/rich-text";
 import { 
   Mail, 
   Phone, 
@@ -61,28 +63,9 @@ type CandidateProfile = {
     startDate: string;
     endDate?: string;
     isCurrent?: boolean | null;
-    description?: Array<{
-      type: string;
-      children?: Array<{ text?: string; type?: string }>;
-    }>;
+    description?: StrapiRichTextContent;
   }>;
 };
-
-function renderRichText(description?: Array<{ type: string; children?: Array<{ text?: string }> }>) {
-  if (!description?.length) return null;
-  return description.map((block, idx) => {
-    if (block.type === "paragraph" && block.children) {
-      const text = block.children.map((c) => c.text || "").join("").trim();
-      if (!text) return null;
-      return (
-        <p key={idx} className="text-sm text-muted-foreground leading-relaxed mb-2">
-          {text}
-        </p>
-      );
-    }
-    return null;
-  });
-}
 
 function formatDate(dateString: string | undefined): string {
   if (!dateString) return "";
@@ -365,7 +348,10 @@ export default async function CandidateProfilePage() {
                       </div>
                       {exp.description && (
                         <div className="mt-3">
-                          {renderRichText(exp.description)}
+                          <StrapiRichText
+                            content={exp.description}
+                            className="text-sm text-muted-foreground max-w-none"
+                          />
                         </div>
                       )}
                       {exp.id !== candidate.experience![candidate.experience!.length - 1].id && (

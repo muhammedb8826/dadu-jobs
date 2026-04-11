@@ -1,4 +1,5 @@
 import { getStrapiURL } from "@/lib/strapi/client";
+import { StrapiRichText } from "@/components/StrapiRichText";
 
 type StrapiFaqItem = {
   id: number;
@@ -29,19 +30,6 @@ async function fetchFaq(): Promise<StrapiFaqResponse> {
   } catch {
     return {};
   }
-}
-
-function renderDescription(description?: StrapiFaqItem["description"]) {
-  if (!description?.length) return null;
-  return description.map((block, idx) => {
-    const text = block.children?.map((c) => c.text).join(" ").trim();
-    if (!text) return null;
-    return (
-      <p key={idx} className="text-sm text-muted-foreground leading-relaxed">
-        {text}
-      </p>
-    );
-  });
 }
 
 export default async function FaqPage() {
@@ -78,7 +66,9 @@ export default async function FaqPage() {
                   +
                 </span>
               </summary>
-              <div className="space-y-3 px-5 pb-5">{renderDescription(faq.description)}</div>
+              <div className="space-y-3 px-5 pb-5">
+                <StrapiRichText content={faq.description} className="text-muted-foreground" />
+              </div>
             </details>
           ))
         )}

@@ -13,6 +13,7 @@ import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { ApplyButton } from "./ApplyButton";
 import { SaveButton } from "../SaveButton";
+import { StrapiRichText } from "@/components/StrapiRichText";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -300,10 +301,7 @@ export default async function DashboardJobDetailPage({
                 {job.description && (
                   <div>
                     <h3 className="text-xl font-semibold mb-4">Job Description</h3>
-                    <div 
-                      className="prose prose-sm max-w-none"
-                      dangerouslySetInnerHTML={{ __html: job.description }}
-                    />
+                    <StrapiRichText content={job.description} className="max-w-none" />
                   </div>
                 )}
               </CardContent>

@@ -15,6 +15,7 @@ import { PublicJobList, JOB_TYPES } from "@/features/jobs";
 import { COMPANY_INDUSTRIES } from "@/features/companies";
 import type { Job } from "@/features/jobs/types/job.types";
 import type { Category } from "@/features/jobs/types/job.types";
+import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 
 interface JobsClientProps {
   initialJobs: Job[];
@@ -52,14 +53,18 @@ export function JobsClient({ initialJobs, categories }: JobsClientProps) {
     if (activeSearchTerm.trim()) {
       const searchLower = activeSearchTerm.toLowerCase();
       filtered = filtered.filter(
-        (job) =>
-          job.title.toLowerCase().includes(searchLower) ||
-          job.description?.toLowerCase().includes(searchLower) ||
-          job.company?.name.toLowerCase().includes(searchLower) ||
-          job.location?.toLowerCase().includes(searchLower) ||
-          job.categories?.some((cat) =>
-            cat.name.toLowerCase().includes(searchLower)
-          )
+        (job) => {
+          const descriptionText = extractRichTextPlainText(job.description).toLowerCase();
+          return (
+            job.title.toLowerCase().includes(searchLower) ||
+            descriptionText.includes(searchLower) ||
+            job.company?.name.toLowerCase().includes(searchLower) ||
+            job.location?.toLowerCase().includes(searchLower) ||
+            job.categories?.some((cat) =>
+              cat.name.toLowerCase().includes(searchLower)
+            )
+          );
+        }
       );
     }
 

@@ -6,6 +6,8 @@ import { ArrowLeft, MapPin, Calendar, Building2, DollarSign, Clock, Briefcase } 
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { JobActions } from "./JobActions";
+import { StrapiRichText } from "@/components/StrapiRichText";
+import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 
 function formatDate(dateString: string): string {
   const date = new Date(dateString);
@@ -48,9 +50,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
     };
   }
 
+  const descriptionText = extractRichTextPlainText(job.description);
+
   return {
     title: `${job.title} | DADU Jobs`,
-    description: job.description ? job.description.replace(/<[^>]*>/g, "").substring(0, 160) : `View details for ${job.title}`,
+    description: descriptionText
+      ? descriptionText.substring(0, 160)
+      : `View details for ${job.title}`,
   };
 }
 
@@ -164,10 +170,7 @@ export default async function JobDetailPage({
               {job.description && (
                 <div>
                   <h3 className="text-xl font-semibold mb-4">Job Description</h3>
-                  <div 
-                    className="prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: job.description }}
-                  />
+                  <StrapiRichText content={job.description} className="max-w-none" />
                 </div>
               )}
             </CardContent>

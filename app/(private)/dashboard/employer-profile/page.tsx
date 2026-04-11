@@ -7,6 +7,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StrapiRichText } from "@/components/StrapiRichText";
 import { User, Briefcase, Edit, Building2, Globe, MapPin } from "lucide-react";
 
 async function getEmployerProfile(userId: number, sessionJwt?: string) {
@@ -284,11 +285,12 @@ export default async function EmployerProfilePage() {
                     )}
                   </div>
                   {employerProfile.company.description && (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Description</p>
-                      <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                        {employerProfile.company.description}
-                      </p>
+                      <StrapiRichText
+                        content={employerProfile.company.description}
+                        className="text-sm text-muted-foreground max-w-none"
+                      />
                     </div>
                   )}
                   {employerProfile.company.socialLinks && employerProfile.company.socialLinks.length > 0 && (

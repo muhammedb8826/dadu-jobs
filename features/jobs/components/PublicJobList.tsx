@@ -11,9 +11,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { StrapiRichText } from "@/components/StrapiRichText";
 import { MapPin, Calendar, Building2 } from "lucide-react";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 import type { Job } from "../types/job.types";
 import { SaveJobButton } from "./SaveJobButton";
 
@@ -42,16 +44,6 @@ function getTimeAgo(dateString: string): string {
   } else {
     return formatDate(dateString);
   }
-}
-
-function stripHtml(html: string): string {
-  if (typeof window !== "undefined") {
-    const tmp = document.createElement("DIV");
-    tmp.innerHTML = html;
-    return tmp.textContent || tmp.innerText || "";
-  }
-  // Server-side fallback: simple regex to remove HTML tags
-  return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/g, " ").trim();
 }
 
 function resolveLogoUrl(company: Job["company"], strapiBaseUrl?: string): string | null {
@@ -97,7 +89,7 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
   return (
     <div className="space-y-4">
       {jobs.map((job) => {
-        const descriptionText = job.description ? stripHtml(job.description) : "";
+        const descriptionText = extractRichTextPlainText(job.description);
         // Show summary (first 400 characters, within 300-500 range)
         const SUMMARY_LENGTH = 400;
         const summary = descriptionText.length > SUMMARY_LENGTH 
@@ -215,9 +207,9 @@ export function PublicJobList({ jobs }: PublicJobListProps) {
                               <span className="hidden data-[state=open]:inline">See less</span>
                             </AccordionTrigger>
                             <AccordionContent className="pt-2">
-                              <div 
-                                className="text-sm text-muted-foreground prose prose-sm max-w-none"
-                                dangerouslySetInnerHTML={{ __html: job.description }}
+                              <StrapiRichText
+                                content={job.description}
+                                className="text-sm text-muted-foreground max-w-none"
                               />
                             </AccordionContent>
                           </>

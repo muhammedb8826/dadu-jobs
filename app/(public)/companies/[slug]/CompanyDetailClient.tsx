@@ -8,6 +8,7 @@ import { ArrowLeft, Building2 } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { StrapiRichText } from "@/components/StrapiRichText";
 import { PublicJobList } from "@/features/jobs";
 import type { Company } from "@/features/companies";
 import type { Job } from "@/features/jobs";
@@ -131,9 +132,9 @@ export function CompanyDetailClient({
               {company.description && (
                 <div className="mb-8">
                   <h4 className="text-lg font-semibold mb-4 underline">Who we are?</h4>
-                  <div
-                    className="prose prose-sm max-w-none text-muted-foreground"
-                    dangerouslySetInnerHTML={{ __html: company.description }}
+                  <StrapiRichText
+                    content={company.description}
+                    className="text-muted-foreground max-w-none"
                   />
                 </div>
               )}

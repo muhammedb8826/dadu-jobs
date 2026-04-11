@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft, Calendar, FileText, User } from "lucide-react";
 import type { Application } from "@/features/jobs/types/application.types";
+import { StrapiRichText } from "@/components/StrapiRichText";
+import type { StrapiRichTextContent } from "@/lib/strapi/rich-text";
 
 type Evaluation = {
   id: number;
@@ -16,7 +18,7 @@ type Evaluation = {
   practical?: number | null;
   totalScore?: number | null;
   rank?: number | null;
-  notes?: string | null;
+  notes?: StrapiRichTextContent | string | null;
   application?: {
     id: number;
     documentId: string;
@@ -219,9 +221,12 @@ export default async function EvaluationPage({
                   <p className="font-medium">{evaluation.rank ?? "—"}</p>
                 </div>
                 {evaluation.notes && (
-                  <div className="sm:col-span-2 lg:col-span-3">
+                  <div className="sm:col-span-2 lg:col-span-3 space-y-2">
                     <span className="text-muted-foreground">Notes</span>
-                    <p className="font-medium">{evaluation.notes}</p>
+                    <StrapiRichText
+                      content={evaluation.notes}
+                      className="text-sm text-muted-foreground max-w-none"
+                    />
                   </div>
                 )}
               </div>
