@@ -3,6 +3,8 @@ import { fetchCategories } from "@/features/jobs/api/job.api";
 import { JobsClient } from "./JobsClient";
 import type { Category } from "@/features/jobs/types/job.types";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: "Job Opportunities | DADU Jobs",
   description: "Browse available job opportunities and find your next career move",

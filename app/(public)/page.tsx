@@ -5,6 +5,8 @@ import { resolveImageUrl } from "@/lib/strapi/media";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
+export const dynamic = 'force-dynamic';
+
 type HomePageButton = {
   id: number;
   title: string;

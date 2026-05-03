@@ -2,6 +2,8 @@ import { getCompanies, getFeaturedCompanies } from "@/features/companies";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { CompaniesPageClient } from "./CompaniesPageClient";
 
+export const dynamic = 'force-dynamic';
+
 export const metadata = {
   title: "Companies | DADU Jobs",
   description: "Browse companies and find your next career opportunity",
