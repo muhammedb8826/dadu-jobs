@@ -3,66 +3,13 @@ import { redirect } from "next/navigation";
 import { isEmployer } from "@/lib/auth/rbac";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { findEmployerProfileForUser } from "@/lib/strapi/employer-profile";
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StrapiRichText } from "@/components/StrapiRichText";
 import { User, Briefcase, Edit, Building2, Globe, MapPin } from "lucide-react";
-
-async function getEmployerProfile(userId: number, sessionJwt?: string) {
-  try {
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return null;
-    }
-
-    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-    // Use the same populate query as the API route for consistency
-    const populateQuery =
-      "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=name&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&" +
-      "populate[company]=*&" +
-      "populate[company][populate][logo][fields][0]=id&populate[company][populate][logo][fields][1]=url&populate[company][populate][logo][fields][2]=name&populate[company][populate][logo][fields][3]=alternativeText&populate[company][populate][logo][fields][4]=formats&" +
-      "populate[company][populate][socialLinks]=*&" +
-      "populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
-
-    // Use user's JWT if available, fallback to API token (same as API route)
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    
-    if (sessionJwt) {
-      headers.Authorization = `Bearer ${sessionJwt}`;
-    } else if (apiToken) {
-      headers.Authorization = `Bearer ${apiToken}`;
-    }
-
-    const response = await fetch(
-      `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`,
-      {
-        method: "GET",
-        headers,
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "");
-      console.error("Error fetching employer profile:", response.status, errorText);
-      return null;
-    }
-
-    const result = await response.json().catch(() => ({}));
-    if (result?.data && Array.isArray(result.data) && result.data.length > 0) {
-      return result.data[0];
-    }
-
-    return null;
-  } catch (error) {
-    console.error("Error fetching employer profile:", error);
-    return null;
-  }
-}
 
 export default async function EmployerProfilePage() {
   const session = await getSession();
@@ -83,8 +30,12 @@ export default async function EmployerProfilePage() {
     redirect("/dashboard");
   }
 
-  const userId = Number(session.userId);
-  const employerProfile = await getEmployerProfile(userId, session.jwt);
+  const employerProfile = await findEmployerProfileForUser({
+    userId: session.userId,
+    userDocumentId: session.userDocumentId,
+    authToken: session.jwt,
+    fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
+  });
   const strapiUrl = getStrapiURL();
   const profilePictureUrl = employerProfile?.profilePicture && strapiUrl
     ? resolveImageUrl(employerProfile.profilePicture, strapiUrl)

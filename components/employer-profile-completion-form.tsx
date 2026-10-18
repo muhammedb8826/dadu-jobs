@@ -55,7 +55,7 @@ type EmployerProfileCompletionFormProps = {
 export function EmployerProfileCompletionForm({
   sections = ["profile", "company", "social"],
   showCancel = true,
-  redirectPath = "/dashboard",
+  redirectPath = "/dashboard/employer-profile",
 }: EmployerProfileCompletionFormProps) {
   const router = useRouter();
   const visibleSections = new Set(sections);
@@ -225,20 +225,24 @@ export function EmployerProfileCompletionForm({
         body: formData,
       });
 
+      const result = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        throw new Error("Failed to upload image");
+        throw new Error(result.error || "Failed to upload image");
       }
 
-      const result = await response.json();
-      if (result?.data?.id) {
+      const uploaded = result?.data || result;
+      const fileId = uploaded?.id;
+      const fileUrl = uploaded?.url;
+      if (fileId) {
         setFormData((prev) => ({
           ...prev,
-          profilePicture: result.data.id,
+          profilePicture: fileId,
         }));
 
         const strapiUrl = getStrapiURL();
-        if (strapiUrl && result.data.url) {
-          setProfilePictureUrl(`${strapiUrl}${result.data.url}`);
+        if (strapiUrl && fileUrl) {
+          setProfilePictureUrl(`${strapiUrl}${fileUrl}`);
         }
       }
     } catch (error) {

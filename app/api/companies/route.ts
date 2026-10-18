@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { getSession } from "@/lib/auth/session";
 import { isEmployer } from "@/lib/auth/rbac";
+import { findEmployerProfileForUser } from "@/lib/strapi/employer-profile";
 
 export async function GET(request: NextRequest) {
   try {
@@ -136,25 +137,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Find the employer profile to link it to the company
-    const userId = Number(session.userId);
-    let employerProfileId: string | number | null = null;
-    
-    if (userId) {
-      const profileRes = await fetch(
-        `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&pagination[limit]=1`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-            ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
-          },
-        }
-      );
-      const profileData = await profileRes.json().catch(() => ({}));
-      // Prefer documentId for Strapi 5, fallback to id
-      employerProfileId = profileData?.data?.[0]?.documentId || profileData?.data?.[0]?.id || null;
-    }
+    // Find the employer profile to link it to the company (no filters[user])
+    const employerProfile = await findEmployerProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
+    });
+    const employerProfileId: string | number | null =
+      employerProfile?.documentId || employerProfile?.id || null;
 
     // Check if company with same name already exists (Upsert logic)
     // This allows employers to use existing companies or create new ones
@@ -164,7 +156,8 @@ export async function POST(request: NextRequest) {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
-          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+          ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
+          ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
         },
       }
     );
@@ -245,7 +238,8 @@ export async function POST(request: NextRequest) {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
+            ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
+            ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
           },
         }
       );
@@ -272,11 +266,8 @@ export async function POST(request: NextRequest) {
       slug,
     };
 
-    // Link owner if userId is available
-    if (userId) {
-      companyData.owner = userId;
-    }
-
+    // Do not set `owner` in the REST body — User owns that relation (mappedBy on company),
+    // and Authenticated often gets "Invalid key owner". Link via employers instead.
     // Link employer profile to company (oneToMany relation: employers)
     if (employerProfileId) {
       companyData.employers = [employerProfileId];
@@ -392,20 +383,15 @@ export async function PUT(request: NextRequest) {
     if (!targetIdentifier) return NextResponse.json({ error: "Missing identifier" }, { status: 400 });
 
     // --- 1. FIND THE EMPLOYER PROFILE ---
-    // We need the documentId of the employer profile to link it
-    const userId = Number(session.userId);
-    const profileRes = await fetch(
-      `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&pagination[limit]=1`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
-        },
-      }
-    );
-    const profileData = await profileRes.json().catch(() => ({}));
-    const employerProfileId = profileData?.data?.[0]?.documentId || profileData?.data?.[0]?.id;
+    const employerProfile = await findEmployerProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
+    });
+    const employerProfileId =
+      employerProfile?.documentId || employerProfile?.id;
 
     // --- 2. BUILD CLEAN PAYLOAD ---
     const updateData: Record<string, unknown> = {};

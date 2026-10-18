@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { getSession } from "@/lib/auth/session";
 import { isEmployer } from "@/lib/auth/rbac";
+import { findEmployerProfileForUser } from "@/lib/strapi/employer-profile";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,28 +38,25 @@ export async function GET(request: NextRequest) {
       "populate[company][populate][socialLinks]=*&" +
       "populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
 
-    let url: string;
-    
-    // If employer wants to view their own profile
+    // Own profile: resolve without filters[user] (Invalid key user on this Strapi)
     if (myProfile && isEmployer(session)) {
-      // Prefer documentId for Strapi v5, fallback to numeric id for backward compatibility
-      if (session.userDocumentId) {
-        url = `${strapiUrl}/api/employer-profiles?filters[user][documentId][$eq]=${session.userDocumentId}&${populateQuery}`;
-      } else {
-        // Fallback for sessions created before documentId was added
-        const userId = Number(session.userId);
-        url = `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`;
-      }
-    } else if (employerId) {
-      // View specific employer profile
+      const mine = await findEmployerProfileForUser({
+        userId: session.userId,
+        userDocumentId: session.userDocumentId,
+        authToken: session.jwt,
+        fallbackAuthToken: apiToken,
+        populateQuery,
+      });
+      return NextResponse.json({ data: mine, meta: {} }, { status: 200 });
+    }
+
+    let url: string;
+    if (employerId) {
       url = `${strapiUrl}/api/employer-profiles/${employerId}?${populateQuery}`;
     } else {
-      // List all employer profiles (only for employers or public)
       url = `${strapiUrl}/api/employer-profiles?${populateQuery}`;
     }
 
-    // Use user's JWT if available, fallback to API token
-    // User JWT ensures we get all fields the user has access to
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -88,46 +86,6 @@ export async function GET(request: NextRequest) {
         { error: errorMessage },
         { status: response.status || 500 }
       );
-    }
-
-    // If employer is fetching their own profile, return single object instead of array
-    if (myProfile && isEmployer(session)) {
-      let profileData = null;
-      
-      // Handle both array and object responses
-      if (Array.isArray(result?.data) && result.data.length > 0) {
-        profileData = result.data[0];
-      } else if (result?.data && !Array.isArray(result.data)) {
-        profileData = result.data;
-      }
-      
-      if (profileData) {
-        // Debug logging for production issues
-        console.log("Profile data structure:", {
-          id: profileData.id,
-          documentId: profileData.documentId,
-          fullName: profileData.fullName,
-          jobTitle: profileData.jobTitle,
-          phone: profileData.phone,
-          bio: profileData.bio,
-          hasCompany: !!profileData.company,
-          companyName: profileData.company?.name,
-          companyFields: profileData.company ? Object.keys(profileData.company) : [],
-          allFields: Object.keys(profileData),
-        });
-        
-        // Return profile data with all fields explicitly included
-        return NextResponse.json({ 
-          data: profileData,
-          meta: result.meta 
-        }, { status: 200 });
-      } else {
-        // No profile found
-        return NextResponse.json({ 
-          data: null,
-          meta: result.meta 
-        }, { status: 200 });
-      }
     }
 
     return NextResponse.json(result, { status: 200 });
@@ -183,25 +141,18 @@ export async function POST(request: NextRequest) {
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
 
-    // Check if profile already exists for this user
-    const userProfileUrl = `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&populate=user`;
-    
-    const verifyResponse = await fetch(userProfileUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
+    // Check if profile already exists (no filters[user])
+    const existingProfile = await findEmployerProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
     });
 
-    let existingProfileId: number | null = null;
-    
-    if (verifyResponse.ok) {
-      const verifyResult = await verifyResponse.json().catch(() => ({}));
-      if (verifyResult?.data && Array.isArray(verifyResult.data) && verifyResult.data.length > 0) {
-        existingProfileId = verifyResult.data[0].id;
-      }
-    }
+    let existingProfileId: number | string | null = existingProfile?.id ?? null;
+    const existingProfileDocumentId: string | null =
+      existingProfile?.documentId ?? null;
 
     // Extract and prepare profile data
     const {
@@ -228,56 +179,68 @@ export async function POST(request: NextRequest) {
       ? (typeof company === "number" ? company : typeof company === "string" ? company : null)
       : null;
 
-    // Prepare profile data
+    // Do not put `user` in the REST body — Authenticated gets "Invalid key user".
+    // Strapi lifecycle links user from ctx.state.user when saving with the JWT.
     const profileData: Record<string, unknown> = {
       fullName,
       phone: phone || null,
       bio: bio || null,
-      user: userId,
     };
 
     if (jobTitle) profileData.jobTitle = jobTitle;
     if (profilePicture) profileData.profilePicture = profilePicture;
-    // Set company relation - Strapi will handle both id and documentId
     if (companyIdentifier) {
       profileData.company = companyIdentifier;
     }
 
-    let response: Response;
-    let result: Record<string, unknown> = {};
-
-    if (existingProfileId) {
-      // Update existing profile
-      const updateUrl = `${strapiUrl}/api/employer-profiles/${existingProfileId}`;
-      response = await fetch(updateUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-          ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
-        body: JSON.stringify({ data: profileData }),
-      });
-    } else {
-      // Create new profile
-      response = await fetch(`${strapiUrl}/api/employer-profiles`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-          ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
-        body: JSON.stringify({ data: profileData }),
-      });
+    if (!userJwt && !apiToken) {
+      return NextResponse.json(
+        { error: "No authentication token available" },
+        { status: 500 }
+      );
     }
 
-    const responseText = await response.text();
-    if (responseText) {
+    const saveWithToken = async (
+      token: string,
+      data: Record<string, unknown>
+    ) => {
+      const target = existingProfileDocumentId || existingProfileId;
+      const url = target
+        ? `${strapiUrl}/api/employer-profiles/${target}`
+        : `${strapiUrl}/api/employer-profiles`;
+      return fetch(url, {
+        method: target ? "PUT" : "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ data }),
+      });
+    };
+
+    const parseResult = async (res: Response) => {
+      const responseText = await res.text();
+      if (!responseText) return {};
       try {
-        result = JSON.parse(responseText);
+        return JSON.parse(responseText) as Record<string, unknown>;
       } catch {
-        result = { error: responseText };
+        return { error: responseText };
       }
+    };
+
+    // Prefer JWT so the lifecycle can attach the user relation
+    let response = await saveWithToken(userJwt || apiToken!, profileData);
+    let result = await parseResult(response);
+
+    if (
+      !response.ok &&
+      userJwt &&
+      apiToken &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      // API token has no ctx.state.user — include user id in the body
+      response = await saveWithToken(apiToken, { ...profileData, user: userId });
+      result = await parseResult(response);
     }
 
     if (!response.ok) {
@@ -293,7 +256,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(result, { status: existingProfileId ? 200 : 201 });
+    return NextResponse.json(result, {
+      status: existingProfileId ? 200 : 201,
+    });
   } catch (error) {
     console.error("Employer profile save error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to save employer profile";
@@ -354,35 +319,26 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // Verify the profile belongs to the logged-in user
-    const verifyResponse = await fetch(
-      `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&populate=user`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
-      }
-    );
+    // Verify the profile belongs to the logged-in user (no filters[user])
+    const userProfile = await findEmployerProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
+    });
 
-    if (verifyResponse.ok) {
-      const verifyResult = await verifyResponse.json().catch(() => ({}));
-      const userProfiles = Array.isArray(verifyResult?.data) ? verifyResult.data : (verifyResult?.data ? [verifyResult.data] : []);
-      
-      if (userProfiles.length > 0) {
-        const userProfile = userProfiles[0];
-        const profileId = body.data.id ? Number(body.data.id) : null;
-        const profileDocumentId = body.data.documentId || null;
-        if (
-          (profileId && userProfile.id !== profileId) ||
-          (profileDocumentId && userProfile.documentId !== profileDocumentId)
-        ) {
-          return NextResponse.json(
-            { error: "Access denied. You can only update your own profile." },
-            { status: 403 }
-          );
-        }
+    if (userProfile) {
+      const profileId = body.data.id ? Number(body.data.id) : null;
+      const profileDocumentId = body.data.documentId || null;
+      if (
+        (profileId && userProfile.id !== profileId) ||
+        (profileDocumentId && userProfile.documentId !== profileDocumentId)
+      ) {
+        return NextResponse.json(
+          { error: "Access denied. You can only update your own profile." },
+          { status: 403 }
+        );
       }
     }
 

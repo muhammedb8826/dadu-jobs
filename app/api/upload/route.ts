@@ -90,16 +90,31 @@ export async function POST(request: NextRequest) {
     let result: unknown = {};
 
     for (const authToken of tokens) {
-      // One retry: Windows + Strapi sharp can hit EBUSY on temp cleanup
-      for (let attempt = 0; attempt < 2; attempt++) {
-        ({ response, result } = await uploadToStrapi(
-          strapiUrl,
-          createFormData(),
-          authToken
-        ));
+      // Retries: Windows temp cleanup / brief Strapi restarts
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          ({ response, result } = await uploadToStrapi(
+            strapiUrl,
+            createFormData(),
+            authToken
+          ));
+        } catch (err) {
+          const code =
+            typeof err === "object" &&
+            err &&
+            "cause" in err &&
+            typeof (err as { cause?: { code?: string } }).cause === "object"
+              ? (err as { cause?: { code?: string } }).cause?.code
+              : undefined;
+          if (code === "ECONNREFUSED" && attempt < 2) {
+            await new Promise((r) => setTimeout(r, 600));
+            continue;
+          }
+          throw err;
+        }
 
         if (response.ok) break;
-        if (response.status !== 500 || attempt === 1) break;
+        if (response.status !== 500 || attempt === 2) break;
         await new Promise((r) => setTimeout(r, 350));
       }
 

@@ -1,4 +1,5 @@
 import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
+import { findEmployerProfileForUser } from "@/lib/strapi/employer-profile";
 import type { Job, Category } from "../types/job.types";
 
 // Populate query - use * for company but explicitly populate nested relations
@@ -181,17 +182,19 @@ export async function getEmployerCompanyId(
     throw new Error("Strapi API is not configured");
   }
 
-  const profileRes = await fetch(
-    `${strapiUrl}/api/employer-profiles?filters[user][id][$eq]=${userId}&populate[company][fields][0]=id&populate[company][fields][1]=documentId&pagination[limit]=1`,
-    {
-      headers: getAuthHeaders(apiToken, userJwt),
-    }
-  );
+  const profile = await findEmployerProfileForUser({
+    userId,
+    authToken: userJwt,
+    fallbackAuthToken: apiToken,
+    populateQuery:
+      "populate[company][fields][0]=id&populate[company][fields][1]=documentId&populate[user][fields][0]=id&populate[user][fields][1]=documentId",
+  });
 
-  const profileData = await profileRes.json().catch(() => ({}));
-  if (profileData?.data?.[0]?.company) {
-    // Prefer documentId for Strapi 5, fallback to id
-    return profileData.data[0].company.documentId || profileData.data[0].company.id;
+  const company = profile?.company as
+    | { documentId?: string; id?: number }
+    | undefined;
+  if (company) {
+    return company.documentId || company.id || null;
   }
 
   return null;
