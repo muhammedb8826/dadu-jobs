@@ -17,18 +17,36 @@ function normalizeSkillLevel(level?: string | null): string {
   return "Intermediate";
 }
 
+/**
+ * Find a skill already linked to this profile, or create one with the relation.
+ * Public role can create skills with candidate_profile=documentId, but cannot
+ * UPDATE skills (403) — so we never rely on a later PUT to attach the relation.
+ */
 async function ensureSkillId(options: {
   strapiUrl: string;
   skillName: string;
   level: string;
+  profileDocumentId: string;
   userJwt?: string;
   apiToken?: string;
-}): Promise<string | number | null> {
+}): Promise<string | null> {
   const level = normalizeSkillLevel(options.level);
   const tokens = [options.userJwt, options.apiToken];
+  const profileDocumentId = options.profileDocumentId;
+  if (!profileDocumentId) {
+    console.error("ensureSkillId: missing profileDocumentId");
+    return null;
+  }
+
+  // Only reuse a skill that is already linked to THIS profile
+  const linkedQuery =
+    `filters[skillName][$eq]=${encodeURIComponent(options.skillName)}` +
+    `&filters[level][$eq]=${encodeURIComponent(level)}` +
+    `&filters[candidate_profile][documentId][$eq]=${encodeURIComponent(profileDocumentId)}` +
+    `&pagination[limit]=1`;
 
   const checkResponse = await fetchWithAuthFallback(
-    `${options.strapiUrl}/api/skills?filters[skillName][$eq]=${encodeURIComponent(options.skillName)}&filters[level][$eq]=${encodeURIComponent(level)}&pagination[limit]=1`,
+    `${options.strapiUrl}/api/skills?${linkedQuery}`,
     tokens,
     { cache: "no-store" }
   );
@@ -40,72 +58,84 @@ async function ensureSkillId(options: {
       : existing?.data
         ? [existing.data]
         : [];
-    if (rows[0]) {
-      return rows[0].documentId || rows[0].id || null;
+    if (rows[0]?.documentId) {
+      return rows[0].documentId as string;
     }
+  } else {
+    await checkResponse.text().catch(() => "");
   }
 
-  const createResponse = await fetchWithAuthFallback(
-    `${options.strapiUrl}/api/skills`,
-    tokens,
+  // Create with relation set via documentId (verified working on this Strapi)
+  const createPayloads: Array<Record<string, unknown>> = [
     {
-      method: "POST",
-      body: JSON.stringify({
-        data: {
-          skillName: options.skillName,
-          level,
-        },
-      }),
-    }
-  );
+      skillName: options.skillName,
+      level,
+      candidate_profile: profileDocumentId,
+    },
+    {
+      skillName: options.skillName,
+      level,
+      candidate_profile: { connect: [profileDocumentId] },
+    },
+    {
+      skillName: options.skillName,
+      level,
+      candidate_profile: { set: [profileDocumentId] },
+    },
+  ];
 
-  if (!createResponse.ok) {
-    const errorText = await createResponse.text().catch(() => "");
-    console.error(
-      `Failed to create skill "${options.skillName}":`,
-      createResponse.status,
-      errorText
+  for (const data of createPayloads) {
+    const createResponse = await fetchWithAuthFallback(
+      `${options.strapiUrl}/api/skills`,
+      tokens,
+      {
+        method: "POST",
+        body: JSON.stringify({ data }),
+      }
     );
-    return null;
-  }
 
-  const created = await createResponse.json().catch(() => ({}));
-  return created?.data?.documentId || created?.data?.id || null;
-}
+    if (createResponse.ok) {
+      const created = await createResponse.json().catch(() => ({}));
+      const docId = (created?.data?.documentId as string) || null;
+      if (!docId) return null;
 
-async function linkSkillsToProfile(options: {
-  strapiUrl: string;
-  profileRef: string | number;
-  skillIds: Array<string | number>;
-  userJwt?: string;
-  apiToken?: string;
-}) {
-  const tokens = [options.userJwt, options.apiToken];
-  await Promise.all(
-    options.skillIds.map(async (skillId) => {
-      try {
-        const response = await fetchWithAuthFallback(
-          `${options.strapiUrl}/api/skills/${skillId}`,
-          tokens,
-          {
-            method: "PUT",
-            body: JSON.stringify({
-              data: { candidate_profile: options.profileRef },
-            }),
-          }
-        );
-        if (!response.ok) {
+      // Confirm link; if create ignored the relation, we cannot PUT (403) — log it
+      const verify = await fetchWithAuthFallback(
+        `${options.strapiUrl}/api/skills?filters[documentId][$eq]=${encodeURIComponent(docId)}&populate[candidate_profile][fields][0]=documentId&pagination[limit]=1`,
+        tokens,
+        { cache: "no-store" }
+      );
+      if (verify.ok) {
+        const verified = await verify.json().catch(() => ({}));
+        const row = Array.isArray(verified?.data) ? verified.data[0] : verified?.data;
+        const linked = row?.candidate_profile?.documentId;
+        if (linked !== profileDocumentId) {
           console.error(
-            "Failed to link skill to profile:",
-            skillId,
-            await response.text().catch(() => "")
+            `Skill "${options.skillName}" created but not linked to profile ${profileDocumentId}`
           );
         }
-      } catch (error) {
-        console.error("Failed to link skill to candidate profile:", skillId, error);
+      } else {
+        await verify.text().catch(() => "");
       }
-    })
-  );
+
+      return docId;
+    }
+
+    const status = createResponse.status;
+    const errorText = await createResponse.text().catch(() => "");
+    // Try next payload shape on validation errors; stop on other failures
+    if (status !== 400) {
+      console.error(
+        `Failed to create skill "${options.skillName}":`,
+        status,
+        errorText
+      );
+      return null;
+    }
+  }
+
+  console.error(`Failed to create linked skill "${options.skillName}" with all payload shapes`);
+  return null;
 }
 
 export async function GET(request: NextRequest) {
@@ -329,38 +359,10 @@ export async function POST(request: NextRequest) {
     delete profileData.user;
     profileData.ownerUserId = userId;
 
-    // Resolve skill IDs; link after save (skills relation is owned by skill.candidate_profile)
-    const skillIdsToLink: (number | string)[] = [];
-    if (Array.isArray(profileData.skills)) {
-      for (const skillItem of profileData.skills) {
-        if (typeof skillItem === "number" || typeof skillItem === "string") {
-          skillIdsToLink.push(skillItem);
-          continue;
-        }
-        if (typeof skillItem === "object" && skillItem !== null) {
-          const skill = skillItem as {
-            id?: number;
-            documentId?: string;
-            skillName?: string;
-            level?: string;
-          };
-          if (skill.documentId || skill.id) {
-            skillIdsToLink.push(skill.documentId || skill.id!);
-            continue;
-          }
-          if (skill.skillName && skill.level) {
-            const skillId = await ensureSkillId({
-              strapiUrl,
-              skillName: skill.skillName,
-              level: skill.level,
-              userJwt,
-              apiToken,
-            });
-            if (skillId) skillIdsToLink.push(skillId);
-          }
-        }
-      }
-    }
+    // Skills are created/linked after the profile is saved so we have a documentId
+    const pendingSkills = Array.isArray(profileData.skills)
+      ? [...(profileData.skills as unknown[])]
+      : [];
     delete profileData.skills;
 
     // Drop empty component rows that would fail date/blocks validation
@@ -497,15 +499,32 @@ export async function POST(request: NextRequest) {
     }
 
     const savedProfile = (result as { data?: { id?: number; documentId?: string } })?.data;
-    const savedProfileRef = savedProfile?.documentId || savedProfile?.id;
-    if (savedProfileRef && skillIdsToLink.length > 0) {
-      await linkSkillsToProfile({
-        strapiUrl,
-        profileRef: savedProfileRef,
-        skillIds: skillIdsToLink,
-        userJwt,
-        apiToken,
-      });
+    const profileDocumentId =
+      savedProfile?.documentId ||
+      existingProfileDocumentId ||
+      session.candidateProfileDocumentId ||
+      null;
+
+    // Create skills with candidate_profile=documentId (create-time link).
+    // Skill UPDATE is Forbidden for Public — do not rely on a later PUT.
+    if (profileDocumentId && pendingSkills.length > 0) {
+      for (const skillItem of pendingSkills) {
+        if (typeof skillItem !== "object" || skillItem === null) continue;
+        const skill = skillItem as {
+          skillName?: string;
+          level?: string;
+        };
+        if (skill.skillName && skill.level) {
+          await ensureSkillId({
+            strapiUrl,
+            skillName: skill.skillName,
+            level: skill.level,
+            profileDocumentId,
+            userJwt,
+            apiToken,
+          });
+        }
+      }
     }
 
     // Persist profile ids on the session so reopen/edit can load this profile
@@ -631,96 +650,52 @@ export async function PUT(request: NextRequest) {
       experience,
     } = body.data;
 
-    // 3. FETCH EXISTING SKILLS ONLY IF NOT PROVIDED
-    // If skills are provided in the request (even empty), we treat that as the source of truth.
     const skillsProvided = Array.isArray(skills);
-    let existingSkillIds: (string | number)[] = [];
 
-    if (!skillsProvided) {
-      try {
-        const currentProfileResponse = await fetch(
-          `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate[skills][fields][0]=id&populate[skills][fields][1]=documentId`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-              ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-            },
-          }
-        );
-        
-        if (currentProfileResponse.ok) {
-          const currentProfile = await currentProfileResponse.json().catch(() => ({}));
-          const profileData = currentProfile?.data;
-          if (profileData?.skills && Array.isArray(profileData.skills)) {
-            existingSkillIds = profileData.skills
-              .map((skill: { id?: number; documentId?: string }) => skill.documentId || skill.id)
-              .filter((id: number | string | undefined): id is number | string => id !== undefined);
-          }
-        }
-      } catch (error) {
-        console.warn("Could not fetch existing skills, proceeding with new skills only:", error);
-      }
-    }
+    // 4. PROCESS SKILLS — create with candidate_profile documentId (create-time link only)
+    const profileDocumentId =
+      (typeof body.data.documentId === "string" && body.data.documentId) ||
+      (typeof targetIdentifier === "string" && Number.isNaN(Number(targetIdentifier))
+        ? String(targetIdentifier)
+        : null) ||
+      session.candidateProfileDocumentId ||
+      userProfile?.documentId ||
+      null;
 
-    // 4. PROCESS SKILLS — create/find via Content API, then link from skill side
-    // (skills relation is mappedBy on candidate-profile, so it can't be set on the profile body)
-    const finalSkillIds: (string | number)[] = skillsProvided ? [] : [...existingSkillIds];
     const failedSkills: string[] = [];
 
-    if (Array.isArray(skills)) {
+    if (skillsProvided && Array.isArray(skills)) {
+      if (!profileDocumentId) {
+        return NextResponse.json(
+          { error: "Cannot save skills without a profile documentId" },
+          { status: 400 }
+        );
+      }
+
       for (const item of skills) {
-        if (typeof item === "number" || typeof item === "string") {
-          if (!finalSkillIds.includes(item)) finalSkillIds.push(item);
-          continue;
-        }
-
-        if (typeof item === "object" && item !== null) {
-          const skill = item as {
-            id?: number;
-            documentId?: string;
-            skillName?: string;
-            level?: string;
-          };
-
-          if (skill.documentId || skill.id) {
-            const skillId = skill.documentId || skill.id!;
-            if (!finalSkillIds.includes(skillId)) finalSkillIds.push(skillId);
-            continue;
+        if (typeof item !== "object" || item === null) continue;
+        const skill = item as { skillName?: string; level?: string };
+        if (skill.skillName && skill.level) {
+          const skillDocId = await ensureSkillId({
+            strapiUrl,
+            skillName: skill.skillName,
+            level: skill.level,
+            profileDocumentId,
+            userJwt,
+            apiToken,
+          });
+          if (!skillDocId) {
+            failedSkills.push(
+              `${skill.skillName} (${normalizeSkillLevel(skill.level)})`
+            );
           }
-
-          if (skill.skillName && skill.level) {
-            const skillId = await ensureSkillId({
-              strapiUrl,
-              skillName: skill.skillName,
-              level: skill.level,
-              userJwt,
-              apiToken,
-            });
-            if (skillId) {
-              if (!finalSkillIds.includes(skillId)) finalSkillIds.push(skillId);
-            } else {
-              failedSkills.push(
-                `${skill.skillName} (${normalizeSkillLevel(skill.level)})`
-              );
-            }
-          } else if (skill.skillName) {
-            failedSkills.push(`${skill.skillName} (missing level)`);
-          }
+        } else if (skill.skillName) {
+          failedSkills.push(`${skill.skillName} (missing level)`);
         }
       }
     }
 
-    const uniqueSkillIds = [...new Set(finalSkillIds)];
-
-    if (skillsProvided && failedSkills.length > 0 && uniqueSkillIds.length === 0) {
-      return NextResponse.json(
-        { error: `Failed to save skills: ${failedSkills.join(", ")}` },
-        { status: 400 }
-      );
-    }
-    if (failedSkills.length > 0) {
+    if (skillsProvided && failedSkills.length > 0) {
       console.warn("Some skills could not be saved:", failedSkills);
     }
 
@@ -808,16 +783,6 @@ export async function PUT(request: NextRequest) {
         }
         if (retry.ok) {
           const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
-          const profileRef = saved?.documentId || saved?.id || targetIdentifier;
-          if (skillsProvided && uniqueSkillIds.length > 0) {
-            await linkSkillsToProfile({
-              strapiUrl,
-              profileRef,
-              skillIds: uniqueSkillIds,
-              userJwt,
-              apiToken,
-            });
-          }
           if (saved?.documentId || saved?.id) {
             await updateSession({
               candidateProfileDocumentId: saved.documentId,
@@ -842,16 +807,6 @@ export async function PUT(request: NextRequest) {
     }
 
     const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
-    const profileRef = saved?.documentId || saved?.id || targetIdentifier;
-    if (skillsProvided && uniqueSkillIds.length > 0) {
-      await linkSkillsToProfile({
-        strapiUrl,
-        profileRef,
-        skillIds: uniqueSkillIds,
-        userJwt,
-        apiToken,
-      });
-    }
     if (saved?.documentId || saved?.id) {
       await updateSession({
         candidateProfileDocumentId: saved.documentId,

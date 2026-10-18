@@ -22,6 +22,7 @@ import { resolveImageUrl } from "@/lib/strapi/media";
 
 type Skill = {
   id?: number;
+  documentId?: string;
   skillName: string;
   level: string;
 };
@@ -80,6 +81,7 @@ type CandidateProfile = {
   } | null;
   skills?: Array<{
     id: number;
+    documentId?: string;
     skillName: string;
     level: string;
   }>;
@@ -114,6 +116,7 @@ function profileToFormData(profile: Partial<CandidateProfile>): CandidateProfile
     skills:
       profile.skills?.map((s) => ({
         id: s.id,
+        documentId: s.documentId,
         skillName: s.skillName,
         level: normalizeSkillLevel(s.level),
       })) || [],
@@ -418,10 +421,11 @@ export function CandidateProfileCompletionForm({
       // ALWAYS include this array, even if empty, to sync with server
       payload.skills = formData.skills
         .map((skill) => {
-          // If skill has an ID, send id + updated fields so level/name can change
-          if (skill.id) {
+          // Prefer documentId for Strapi 5 relation linking
+          if (skill.documentId || skill.id) {
             return {
-              id: skill.id,
+              ...(skill.documentId ? { documentId: skill.documentId } : {}),
+              ...(skill.id ? { id: skill.id } : {}),
               skillName: skill.skillName,
               level: normalizeSkillLevel(skill.level),
             };
@@ -434,13 +438,7 @@ export function CandidateProfileCompletionForm({
           }
           return null;
         })
-        .filter(
-          (
-            skill
-          ): skill is
-            | { id: number; skillName: string; level: string }
-            | { skillName: string; level: string } => skill !== null
-        );
+        .filter((skill): skill is NonNullable<typeof skill> => skill !== null);
 
       // Education and experience are components - can be passed as arrays
       // Include ID if present (for updates), omit if not (for creates)
