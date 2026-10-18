@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Category, JobFormData } from "../types/job.types";
 import { WORKPLACE_TYPES, JOB_TYPES, EXPERIENCE_LEVELS } from "../constants/job.constants";
+import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 
 export function JobPostingForm({ jobId }: { jobId?: number | string }) {
   const router = useRouter();
@@ -91,7 +92,7 @@ export function JobPostingForm({ jobId }: { jobId?: number | string }) {
             console.log("Setting form data with job:", job);
             setFormData({
               title: job.title || "",
-              description: job.description || "",
+              description: extractRichTextPlainText(job.description),
               location: job.location || "",
               jobType: job.jobType || "",
               deadline: job.deadline || "",

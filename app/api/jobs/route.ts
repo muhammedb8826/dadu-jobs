@@ -14,6 +14,7 @@ import {
   deleteJob,
 } from "@/features/jobs/api/job.api";
 import { WORKPLACE_TYPES, EXPERIENCE_LEVELS, APPROVAL_STATUSES } from "@/features/jobs/constants/job.constants";
+import { toStrapiBlocks } from "@/lib/strapi/rich-text";
 
 export async function GET(request: NextRequest) {
   try {
@@ -148,8 +149,10 @@ export async function POST(request: NextRequest) {
       jobCode,
     } = body.data;
 
+    const descriptionBlocks = toStrapiBlocks(description);
+
     // Validate required fields
-    if (!title || !description || !deadline || !jobCode) {
+    if (!title || descriptionBlocks.length === 0 || !deadline || !jobCode) {
       return NextResponse.json(
         { error: "Title, description, deadline, and job code are required" },
         { status: 400 }
@@ -167,17 +170,18 @@ export async function POST(request: NextRequest) {
     // Generate slug from title
     const slug = generateSlug(title);
 
-    // Prepare job payload
+    // Prepare job payload — do not send `user` (Invalid key user for Authenticated).
+    // Strapi job lifecycle sets user from ctx.state.user when saving with JWT.
+    // description is Strapi blocks — never send a plain string.
     const jobData: Record<string, unknown> = {
       title,
       slug,
-      description,
+      description: descriptionBlocks,
       deadline,
       workplaceType: workplaceType || WORKPLACE_TYPES[1], // Default to "On Site"
       isFeatured: isFeatured || false,
       isActive: isActive !== undefined ? isActive : true,
       experience: experience || EXPERIENCE_LEVELS[0], // Default to "Entry"
-      user: userId,
       approvalStatus: APPROVAL_STATUSES[0], // Default to "Pending"
       jobCode,
     };
@@ -214,8 +218,8 @@ export async function POST(request: NextRequest) {
       jobData.categories = categories;
     }
 
-    // Create the job
-    const job = await createJob(jobData, userJwt, apiToken);
+    // Create the job (lifecycle links user when JWT is used)
+    const job = await createJob(jobData, userJwt, apiToken, userId);
     return NextResponse.json({ data: job }, { status: 201 });
   } catch (error) {
     console.error("Job creation error:", error);
@@ -271,8 +275,13 @@ export async function PUT(request: NextRequest) {
     // Get employer's company
     const companyId = await getEmployerCompanyId(userId, apiToken, userJwt);
 
-    // Verify the job belongs to the logged-in user
-    if (!(await verifyJobOwnership(jobId, userId, apiToken))) {
+    // Verify ownership (user link, or company when user was never set)
+    if (
+      !(await verifyJobOwnership(jobId, userId, apiToken, {
+        userJwt,
+        companyId,
+      }))
+    ) {
       return NextResponse.json(
         { error: "Access denied. You can only update your own job postings." },
         { status: 403 }
@@ -282,7 +291,7 @@ export async function PUT(request: NextRequest) {
     // Clean the data - Whitelist only allowed fields
     const updateData: Record<string, unknown> = {};
     const allowedFields = [
-      'title', 'description', 'location', 'jobType', 
+      'title', 'location', 'jobType',
       'deadline', 'workplaceType', 'isFeatured', 'isActive',
       'experience', 'jobCode', 'categories'
     ];
@@ -292,6 +301,18 @@ export async function PUT(request: NextRequest) {
         updateData[field] = body.data[field];
       }
     });
+
+    // description is Strapi blocks — convert plain text from the form
+    if (body.data.description !== undefined) {
+      const descriptionBlocks = toStrapiBlocks(body.data.description);
+      if (descriptionBlocks.length === 0) {
+        return NextResponse.json(
+          { error: "Job description is required" },
+          { status: 400 }
+        );
+      }
+      updateData.description = descriptionBlocks;
+    }
 
     // Handle slug regeneration if title changed
     if (updateData.title) {
@@ -379,9 +400,14 @@ export async function DELETE(request: NextRequest) {
     const userJwt = session.jwt;
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
+    const companyId = await getEmployerCompanyId(userId, apiToken, userJwt);
 
-    // Verify the job belongs to the logged-in user
-    if (!(await verifyJobOwnership(jobId, userId, apiToken))) {
+    if (
+      !(await verifyJobOwnership(jobId, userId, apiToken, {
+        userJwt,
+        companyId,
+      }))
+    ) {
       return NextResponse.json(
         { error: "Access denied. You can only delete your own job postings." },
         { status: 403 }

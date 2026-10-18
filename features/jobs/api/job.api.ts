@@ -151,22 +151,61 @@ export async function fetchJobs(
     throw new Error("Strapi API is not configured");
   }
 
-  let url = `${strapiUrl}/api/jobs?${POPULATE_QUERY}`;
-  if (userId) {
-    url = `${strapiUrl}/api/jobs?filters[user][id][$eq]=${userId}&${POPULATE_QUERY}`;
-  }
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getAuthHeaders(apiToken, userJwt),
-    cache: "no-store",
-  });
+  // Avoid filters[user] — Invalid key user on this Strapi. Filter in app code.
+  const response = await fetch(
+    `${strapiUrl}/api/jobs?${POPULATE_QUERY}&pagination[pageSize]=100&sort[0]=updatedAt:desc`,
+    {
+      method: "GET",
+      headers: getAuthHeaders(apiToken, userJwt),
+      cache: "no-store",
+    }
+  );
 
   if (!response.ok) {
     throw new Error("Failed to fetch jobs");
   }
 
-  return await response.json();
+  const result = await response.json();
+  if (!userId) {
+    return result;
+  }
+
+  const rows = Array.isArray(result?.data) ? result.data : [];
+  const wanted = String(userId);
+  let companyId: string | number | null = null;
+  try {
+    companyId = await getEmployerCompanyId(userId, apiToken, userJwt);
+  } catch {
+    companyId = null;
+  }
+  const companyKey = companyId != null ? String(companyId) : null;
+
+  const filtered = rows.filter(
+    (job: {
+      user?: { id?: number | string } | number | string;
+      company?: { id?: number | string; documentId?: string } | number | string;
+    }) => {
+      const linked = job?.user;
+      if (linked != null) {
+        if (typeof linked === "number" || typeof linked === "string") {
+          if (String(linked) === wanted) return true;
+        } else if (String(linked.id) === wanted) {
+          return true;
+        }
+      }
+      if (!companyKey || job?.company == null) return false;
+      const company = job.company;
+      if (typeof company === "number" || typeof company === "string") {
+        return String(company) === companyKey;
+      }
+      return (
+        String(company.documentId) === companyKey ||
+        String(company.id) === companyKey
+      );
+    }
+  );
+
+  return { ...result, data: filtered };
 }
 
 /**
@@ -254,12 +293,13 @@ export function generateSlug(title: string): string {
 }
 
 /**
- * Verify job ownership
+ * Verify job ownership via linked user, or employer company when user was never set.
  */
 export async function verifyJobOwnership(
   jobId: string | number,
   userId: number,
-  apiToken?: string
+  apiToken?: string,
+  options?: { userJwt?: string; companyId?: string | number | null }
 ): Promise<boolean> {
   const strapiUrl = getStrapiURL();
   if (!strapiUrl) {
@@ -267,10 +307,10 @@ export async function verifyJobOwnership(
   }
 
   const response = await fetch(
-    `${strapiUrl}/api/jobs/${jobId}?populate[user][fields][0]=id`,
+    `${strapiUrl}/api/jobs/${jobId}?populate[user][fields][0]=id&populate[company][fields][0]=id&populate[company][fields][1]=documentId`,
     {
       method: "GET",
-      headers: getAuthHeaders(apiToken),
+      headers: getAuthHeaders(apiToken, options?.userJwt),
     }
   );
 
@@ -280,37 +320,93 @@ export async function verifyJobOwnership(
 
   const result = await response.json().catch(() => ({}));
   const job = result?.data;
+  if (!job) return false;
 
-  return job?.user?.id === userId;
+  const linked =
+    job.user == null
+      ? null
+      : typeof job.user === "object"
+        ? job.user.id
+        : job.user;
+
+  if (linked != null) {
+    return Number(linked) === Number(userId);
+  }
+
+  let companyId = options?.companyId;
+  if (companyId == null) {
+    try {
+      companyId = await getEmployerCompanyId(
+        userId,
+        apiToken,
+        options?.userJwt
+      );
+    } catch {
+      return false;
+    }
+  }
+  if (companyId == null) return false;
+
+  const company = job.company;
+  if (company == null) return false;
+  const wanted = String(companyId);
+  if (typeof company === "number" || typeof company === "string") {
+    return String(company) === wanted;
+  }
+  return (
+    String(company.documentId) === wanted || String(company.id) === wanted
+  );
 }
 
 /**
- * Create a new job
+ * Create a new job.
+ * Do not send `user` with the JWT — Authenticated gets "Invalid key user".
+ * Strapi job lifecycle sets user from ctx.state.user.
  */
 export async function createJob(
   jobData: Record<string, unknown>,
   userJwt?: string,
-  apiToken?: string
+  apiToken?: string,
+  userId?: number
 ): Promise<Job> {
   const strapiUrl = getStrapiURL();
   if (!strapiUrl) {
     throw new Error("Strapi API is not configured");
   }
 
-  const response = await fetch(`${strapiUrl}/api/jobs`, {
-    method: "POST",
-    headers: getAuthHeaders(apiToken, userJwt),
-    body: JSON.stringify({ data: jobData }),
-  });
+  const { user: _omitUser, ...safeData } = jobData;
+  void _omitUser;
 
-  const responseText = await response.text();
-  let result: Record<string, unknown> = {};
-  if (responseText) {
+  const parseBody = async (response: Response) => {
+    const responseText = await response.text();
+    if (!responseText) return {} as Record<string, unknown>;
     try {
-      result = JSON.parse(responseText);
+      return JSON.parse(responseText) as Record<string, unknown>;
     } catch {
-      result = { error: responseText };
+      return { error: responseText };
     }
+  };
+
+  let response = await fetch(`${strapiUrl}/api/jobs`, {
+    method: "POST",
+    headers: getAuthHeaders(userJwt ? undefined : apiToken, userJwt),
+    body: JSON.stringify({ data: safeData }),
+  });
+  let result = await parseBody(response);
+
+  if (
+    !response.ok &&
+    userJwt &&
+    apiToken &&
+    (response.status === 401 || response.status === 403) &&
+    userId
+  ) {
+    response = await fetch(`${strapiUrl}/api/jobs`, {
+      method: "POST",
+      headers: getAuthHeaders(apiToken),
+      body: JSON.stringify({ data: { ...safeData, user: userId } }),
+    });
+    result = await parseBody(response);
   }
 
   if (!response.ok) {
@@ -322,7 +418,32 @@ export async function createJob(
     throw new Error(errorMessage);
   }
 
-  return result.data as Job;
+  const created = result.data as Job & {
+    documentId?: string;
+    user?: { id?: number } | number | null;
+  };
+
+  // Backfill user with API token when Document middleware/lifecycle missed it
+  const linkedUser =
+    created?.user == null
+      ? null
+      : typeof created.user === "object"
+        ? created.user.id
+        : created.user;
+  const jobKey = created?.documentId || (created as { id?: number })?.id;
+  if (apiToken && userId && jobKey && linkedUser == null) {
+    try {
+      await fetch(`${strapiUrl}/api/jobs/${jobKey}`, {
+        method: "PUT",
+        headers: getAuthHeaders(apiToken),
+        body: JSON.stringify({ data: { user: userId } }),
+      });
+    } catch {
+      // Listing can still match via company
+    }
+  }
+
+  return created as Job;
 }
 
 /**

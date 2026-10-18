@@ -1,5 +1,5 @@
 import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
-import { fetchJobBySlug } from "../api/job.api";
+import { fetchJobBySlug, getEmployerCompanyId } from "../api/job.api";
 import type { Job } from "../types/job.types";
 
 function linkedUserId(user: unknown): string | null {
@@ -9,6 +9,25 @@ function linkedUserId(user: unknown): string | null {
     return String((user as { id: unknown }).id);
   }
   return null;
+}
+
+function companyMatches(
+  company: unknown,
+  wanted: string | number | null | undefined
+): boolean {
+  if (wanted == null || company == null) return false;
+  const w = String(wanted);
+  if (typeof company === "number" || typeof company === "string") {
+    return String(company) === w;
+  }
+  if (typeof company === "object") {
+    const c = company as { id?: unknown; documentId?: unknown };
+    return (
+      (c.documentId != null && String(c.documentId) === w) ||
+      (c.id != null && String(c.id) === w)
+    );
+  }
+  return false;
 }
 
 /**
@@ -50,7 +69,8 @@ export async function getPublicJobs(): Promise<Job[]> {
 }
 
 /**
- * Get jobs for employer dashboard (filtered by user)
+ * Get jobs for employer dashboard (by linked user, or by employer company).
+ * Company fallback covers jobs created before user-linking was reliable.
  */
 export async function getJobs(userId: number, sessionJwt?: string): Promise<Job[]> {
   try {
@@ -66,11 +86,10 @@ export async function getJobs(userId: number, sessionJwt?: string): Promise<Job[
     // Avoid filters[user] — list and match in app code
     const url = `${strapiUrl}/api/jobs?${populateQuery}&pagination[pageSize]=100&sort[0]=updatedAt:desc`;
 
-    const response = await fetchWithAuthFallback(
-      url,
-      [sessionJwt, apiToken],
-      { cache: "no-store" }
-    );
+    const [response, companyId] = await Promise.all([
+      fetchWithAuthFallback(url, [sessionJwt, apiToken], { cache: "no-store" }),
+      getEmployerCompanyId(userId, apiToken, sessionJwt).catch(() => null),
+    ]);
 
     if (!response.ok) {
       const errorText = await response.text().catch(() => "Unknown error");
@@ -89,8 +108,16 @@ export async function getJobs(userId: number, sessionJwt?: string): Promise<Job[
       : result?.data
         ? [result.data]
         : [];
-    const wanted = String(userId);
-    return jobs.filter((job) => linkedUserId((job as { user?: unknown }).user) === wanted);
+    const wantedUser = String(userId);
+    return jobs.filter((job) => {
+      if (linkedUserId((job as { user?: unknown }).user) === wantedUser) {
+        return true;
+      }
+      return companyMatches(
+        (job as { company?: unknown }).company,
+        companyId
+      );
+    });
   } catch (error) {
     console.error("getJobs: Error fetching jobs:", error);
     return [];
