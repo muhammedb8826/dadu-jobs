@@ -12,7 +12,7 @@ export type SessionData = {
   firstName: string;
   userType?: UserType; // User type: EMPLOYER or CANDIDATE
   jwt?: string; // Store JWT token for authenticated Strapi requests
-  /** Candidate profile documentId — used when Strapi cannot filter by user relation */
+  /** Authoritative candidate profile documentId (session ownership handle) */
   candidateProfileDocumentId?: string;
   candidateProfileId?: number;
 };
@@ -56,6 +56,14 @@ export async function updateSession(
     ...patch,
     userType: parseUserType(patch.userType ?? current.userType) || current.userType,
   };
+
+  // Allow clearing optional fields with explicit undefined
+  for (const key of Object.keys(patch) as Array<keyof SessionData>) {
+    if (patch[key] === undefined) {
+      delete next[key];
+    }
+  }
+
   await createSession(next);
   return next;
 }

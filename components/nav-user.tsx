@@ -55,6 +55,11 @@ export function NavUser({
       })
 
       if (response.ok) {
+        try {
+          window.localStorage.removeItem("dadu_candidate_profile_documentId")
+        } catch {
+          // ignore storage errors
+        }
         router.push("/login")
         router.refresh()
       } else {

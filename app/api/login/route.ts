@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { createSession, parseUserType } from "@/lib/auth/session";
+import { resolveCandidateProfileDocumentIdFromUser } from "@/lib/strapi/candidate-profile";
 import { UserType } from "@/lib/types/user.types";
 
 type StrapiAuthResponse = {
@@ -166,14 +167,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create session with user data from Strapi including JWT token, user type, and documentId
+    // Resolve linked candidate profile documentId from User.candidate_profile when present
+    let candidateProfileDocumentId: string | undefined;
+    if (userType === UserType.CANDIDATE) {
+      candidateProfileDocumentId =
+        (await resolveCandidateProfileDocumentIdFromUser({
+          authToken: authData.jwt,
+          fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
+        })) || undefined;
+    }
+
+    // Create session with user data from Strapi including JWT, documentIds, and role
     await createSession({
       userId: String(authData.user.id),
-      userDocumentId: userDocumentId, // Store Strapi v5 documentId for stable filtering
+      userDocumentId: userDocumentId,
       email: authData.user.email,
       firstName: authData.user.firstName || authData.user.username || "",
-      userType: userType, // Store user type for role-based access control
-      jwt: authData.jwt, // Store JWT for authenticated requests
+      userType: userType,
+      jwt: authData.jwt,
+      candidateProfileDocumentId,
     });
 
     return NextResponse.json(

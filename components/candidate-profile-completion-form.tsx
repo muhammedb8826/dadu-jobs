@@ -94,7 +94,6 @@ type CandidateProfileCompletionFormProps = {
   isEditMode?: boolean;
 };
 
-const PROFILE_DOC_KEY = "dadu_candidate_profile_documentId";
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Expert"] as const;
 
 function normalizeSkillLevel(level?: string | null): string {
@@ -169,9 +168,6 @@ export function CandidateProfileCompletionForm({
   const applyProfile = (profile: Partial<CandidateProfile>) => {
     setProfileId(profile.id ?? null);
     setProfileDocumentId(profile.documentId ?? null);
-    if (profile.documentId && typeof window !== "undefined") {
-      window.localStorage.setItem(PROFILE_DOC_KEY, profile.documentId);
-    }
     setFormData(profileToFormData(profile));
 
     const strapiUrl = getStrapiURL();
@@ -183,28 +179,24 @@ export function CandidateProfileCompletionForm({
     }
   };
 
-  // Load saved profile: server initialData first, then API (+ localStorage claim)
+  // Load saved profile: server initialData first, then API (session ownership only)
   useEffect(() => {
     let cancelled = false;
 
     const loadProfile = async () => {
       try {
+        // Drop legacy cross-account localStorage key from older builds
+        if (typeof window !== "undefined") {
+          window.localStorage.removeItem("dadu_candidate_profile_documentId");
+        }
+
         if (initialData?.fullName || initialData?.documentId) {
           applyProfile(initialData);
           if (!cancelled) setIsLoading(false);
           return;
         }
 
-        const storedDocId =
-          typeof window !== "undefined"
-            ? window.localStorage.getItem(PROFILE_DOC_KEY)
-            : null;
-        const claimQuery = storedDocId
-          ? `&claimDocumentId=${encodeURIComponent(storedDocId)}`
-          : "";
-        const response = await fetch(
-          `/api/candidate-profiles?myProfile=true${claimQuery}`
-        );
+        const response = await fetch("/api/candidate-profiles?myProfile=true");
         if (response.ok) {
           const result = await response.json();
           if (result?.data && !cancelled) {
@@ -539,6 +531,8 @@ export function CandidateProfileCompletionForm({
       }
 
       setSubmitSuccess(true);
+      // Refresh first so the next RSC read picks up session.candidateProfileDocumentId
+      router.refresh();
       setTimeout(() => {
         router.push("/dashboard/candidate-profile");
         router.refresh();

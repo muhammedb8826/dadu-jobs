@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
 import { getSession, updateSession } from "@/lib/auth/session";
 import { isEmployer, isCandidate } from "@/lib/auth/rbac";
-import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile";
+import {
+  attachProfileToAuthenticatedUser,
+  findCandidateProfileForUser,
+  findUnownedCandidateProfileByContact,
+} from "@/lib/strapi/candidate-profile";
 
 const SKILL_LEVELS = new Set(["Beginner", "Intermediate", "Expert"]);
 
@@ -162,7 +166,6 @@ export async function GET(request: NextRequest) {
     const candidateId = searchParams.get("id");
     const documentId = searchParams.get("documentId");
     const myProfile = searchParams.get("myProfile") === "true";
-    const claimDocumentId = searchParams.get("claimDocumentId");
 
     // Build populate query for candidate profile
     // Skills are manyToOne relation - populate only specific fields to avoid reverse relation issues
@@ -176,7 +179,7 @@ export async function GET(request: NextRequest) {
     
     // If candidate wants to view their own profile
     if (myProfile && isCandidate(session)) {
-      let mine = await findCandidateProfileForUser({
+      const mine = await findCandidateProfileForUser({
         userId: session.userId,
         userDocumentId: session.userDocumentId,
         profileDocumentId: session.candidateProfileDocumentId,
@@ -185,29 +188,17 @@ export async function GET(request: NextRequest) {
         populateQuery,
       });
 
-      // Reclaim an unowned / own profile via documentId from client localStorage
-      if (!mine && claimDocumentId && typeof claimDocumentId === "string") {
-        const claimed = await findCandidateProfileForUser({
-          profileDocumentId: claimDocumentId,
-          authToken: session.jwt,
-          fallbackAuthToken: apiToken,
-          populateQuery,
-        });
-        const ownerId = claimed?.ownerUserId;
-        const unowned = ownerId == null || ownerId === "";
-        const ownedByMe =
-          ownerId != null && String(ownerId) === String(session.userId);
-        if (claimed && (unowned || ownedByMe)) {
-          mine = claimed;
+      if (mine?.documentId) {
+        if (mine.documentId !== session.candidateProfileDocumentId) {
+          await updateSession({
+            candidateProfileDocumentId: mine.documentId,
+            candidateProfileId: mine.id,
+          });
         }
       }
+      // Do NOT clear session.candidateProfileDocumentId when find returns null —
+      // attach may lag and wiping the hint makes the profile unrecoverable.
 
-      if (mine?.documentId && mine.documentId !== session.candidateProfileDocumentId) {
-        await updateSession({
-          candidateProfileDocumentId: mine.documentId,
-          candidateProfileId: mine.id,
-        });
-      }
       return NextResponse.json({ data: mine, meta: {} }, { status: 200 });
     } else if (candidateId) {
       // Employers can view any candidate, candidates can only view their own
@@ -327,7 +318,7 @@ export async function POST(request: NextRequest) {
     const userId = Number(session.userId);
 
     // Check if profile already exists for this user (without filters[user])
-    const existingProfile = await findCandidateProfileForUser({
+    let existingProfile = await findCandidateProfileForUser({
       userId: session.userId,
       userDocumentId: session.userDocumentId,
       profileDocumentId: session.candidateProfileDocumentId,
@@ -335,6 +326,23 @@ export async function POST(request: NextRequest) {
       fallbackAuthToken: apiToken,
       populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
     });
+
+    // Prepare profile data
+    const profileData = { ...body.data };
+
+    // If session hint was lost, rebind an unowned row with the same name + phone
+    if (!existingProfile) {
+      const orphan = await findUnownedCandidateProfileByContact({
+        fullName:
+          typeof profileData.fullName === "string" ? profileData.fullName : null,
+        phone: typeof profileData.phone === "string" ? profileData.phone : null,
+        authToken: userJwt,
+        fallbackAuthToken: apiToken,
+      });
+      if (orphan) {
+        existingProfile = orphan;
+      }
+    }
 
     const existingProfileId: number | string | null = existingProfile?.id ?? null;
     const existingProfileDocumentId: string | null =
@@ -347,17 +355,13 @@ export async function POST(request: NextRequest) {
         userId,
       });
     }
-
-    // Prepare profile data
-    const profileData = { ...body.data };
     
     // Remove id/documentId if present (belongs in the URL, not body)
     delete profileData.id;
     delete profileData.documentId;
-    // Strapi REST rejects `user` on this content-type ("Invalid key user").
-    // Ownership is tracked via ownerUserId (filterable integer) instead.
+    // Do not send `user` in the REST body — Authenticated role gets
+    // "Invalid key user". The Strapi lifecycle sets user from ctx.state.user (JWT).
     delete profileData.user;
-    profileData.ownerUserId = userId;
 
     // Skills are created/linked after the profile is saved so we have a documentId
     const pendingSkills = Array.isArray(profileData.skills)
@@ -395,7 +399,10 @@ export async function POST(request: NextRequest) {
     // If ID is present, it updates; if not, it creates a new one
     // No need to remove IDs - Strapi handles it automatically
 
-    const saveWithToken = async (token?: string) => {
+    const saveWithToken = async (
+      token?: string,
+      data: Record<string, unknown> = profileData
+    ) => {
       const headers: HeadersInit = {
         "Content-Type": "application/json",
       };
@@ -409,19 +416,18 @@ export async function POST(request: NextRequest) {
         return fetch(`${strapiUrl}/api/candidate-profiles/${targetId}`, {
           method: "PUT",
           headers,
-          body: JSON.stringify({ data: profileData }),
+          body: JSON.stringify({ data }),
         });
       }
 
       return fetch(`${strapiUrl}/api/candidate-profiles`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ data: profileData }),
+        body: JSON.stringify({ data }),
       });
     };
 
-    // Prefer user JWT so Strapi can attach ctx.state.user on create/update.
-    // Fall back to API token only if JWT is missing.
+    // Prefer user JWT so Strapi lifecycle can set ctx.state.user → user relation.
     if (!userJwt && !apiToken) {
       return NextResponse.json(
         { error: "No authentication token available" },
@@ -442,23 +448,9 @@ export async function POST(request: NextRequest) {
       return parsed;
     };
 
+    // Always save with JWT first so the Strapi lifecycle can link user from ctx.state.user
     let response = await saveWithToken(userJwt || apiToken);
     let result = await parseResult(response);
-
-    // If Strapi hasn't been restarted yet, ownerUserId may be unknown — retry without it
-    const firstError =
-      typeof result?.error === "object" && result.error
-        ? (result.error as { message?: string }).message
-        : "";
-    if (
-      !response.ok &&
-      response.status === 400 &&
-      String(firstError).toLowerCase().includes("owneruserid")
-    ) {
-      delete profileData.ownerUserId;
-      response = await saveWithToken(userJwt || apiToken);
-      result = await parseResult(response);
-    }
 
     if (
       !response.ok &&
@@ -467,9 +459,10 @@ export async function POST(request: NextRequest) {
       (response.status === 401 || response.status === 403)
     ) {
       console.warn(
-        "Candidate profile save with user JWT failed, retrying with API token..."
+        "Candidate profile save with user JWT failed, retrying with API token + user id..."
       );
-      response = await saveWithToken(apiToken);
+      // API token has no ctx.state.user — set the relation in the body (like employer-profiles)
+      response = await saveWithToken(apiToken, { ...profileData, user: userId });
       result = await parseResult(response);
     }
 
@@ -527,15 +520,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Persist profile ids on the session so reopen/edit can load this profile
-    if (savedProfile?.documentId || savedProfile?.id) {
+    // Persist profile documentId on the session (required for reload — attach may fail)
+    if (profileDocumentId || savedProfile?.id) {
       await updateSession({
-        candidateProfileDocumentId: savedProfile.documentId,
-        candidateProfileId: savedProfile.id,
+        candidateProfileDocumentId: profileDocumentId || savedProfile?.documentId,
+        candidateProfileId: savedProfile?.id,
       });
     }
 
-    return NextResponse.json(result, { status: existingProfileId ? 200 : 201 });
+    // Link User.candidate_profile so login can resolve the profile later
+    if (profileDocumentId) {
+      await attachProfileToAuthenticatedUser({
+        profileDocumentId,
+        userJwt,
+        apiToken,
+        userId,
+      });
+    }
+
+    // Return populated profile so the client always has the saved documentId
+    const refreshed = profileDocumentId
+      ? await findCandidateProfileForUser({
+          userId: session.userId,
+          userDocumentId: session.userDocumentId,
+          profileDocumentId,
+          authToken: userJwt,
+          fallbackAuthToken: apiToken,
+        })
+      : null;
+
+    return NextResponse.json(
+      { data: refreshed || savedProfile || result, meta: {} },
+      { status: existingProfileId ? 200 : 201 }
+    );
   } catch (error) {
     console.error("Candidate profile save error:", error);
     const causeCode =
@@ -610,7 +627,7 @@ export async function PUT(request: NextRequest) {
     const userJwt = session.jwt;
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
 
-    // Verify the profile belongs to the logged-in user (no filters[user])
+    // Verify the profile belongs to the logged-in user (documentId / users/me / user match)
     const userProfile = await findCandidateProfileForUser({
       userId: session.userId,
       userDocumentId: session.userDocumentId,
@@ -622,19 +639,34 @@ export async function PUT(request: NextRequest) {
       populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
     });
 
-    if (userProfile) {
-      const profileId = body.data.id ? Number(body.data.id) : null;
-      const profileDocumentId = body.data.documentId || null;
-      if (
-        (profileId && userProfile.id !== profileId) ||
-        (profileDocumentId && userProfile.documentId !== profileDocumentId)
-      ) {
-        return NextResponse.json(
-          { error: "Access denied. You can only update your own profile." },
-          { status: 403 }
-        );
-      }
+    if (!userProfile?.documentId && userProfile?.id == null) {
+      return NextResponse.json(
+        { error: "Access denied. You can only update your own profile." },
+        { status: 403 }
+      );
     }
+
+    const bodyDocumentId =
+      typeof body.data.documentId === "string" ? body.data.documentId : null;
+    const bodyNumericId =
+      body.data.id != null && !Number.isNaN(Number(body.data.id))
+        ? Number(body.data.id)
+        : null;
+    const clientRef = bodyDocumentId || bodyNumericId || targetIdentifier;
+    const ownsTarget =
+      (userProfile.documentId != null &&
+        String(clientRef) === String(userProfile.documentId)) ||
+      (userProfile.id != null && String(clientRef) === String(userProfile.id));
+
+    if (!ownsTarget) {
+      return NextResponse.json(
+        { error: "Access denied. You can only update your own profile." },
+        { status: 403 }
+      );
+    }
+
+    // Always update via the server-verified identifier (documentId preferred)
+    const verifiedTarget = userProfile.documentId || userProfile.id!;
 
     // 2. DESTRUCTURE & RECONSTRUCT (The "Safe Guard")
     // We pull out only the fields we want to SAVE
@@ -654,12 +686,9 @@ export async function PUT(request: NextRequest) {
 
     // 4. PROCESS SKILLS — create with candidate_profile documentId (create-time link only)
     const profileDocumentId =
-      (typeof body.data.documentId === "string" && body.data.documentId) ||
-      (typeof targetIdentifier === "string" && Number.isNaN(Number(targetIdentifier))
-        ? String(targetIdentifier)
-        : null) ||
+      userProfile.documentId ||
       session.candidateProfileDocumentId ||
-      userProfile?.documentId ||
+      (typeof bodyDocumentId === "string" ? bodyDocumentId : null) ||
       null;
 
     const failedSkills: string[] = [];
@@ -707,7 +736,6 @@ export async function PUT(request: NextRequest) {
       ...(fullName !== undefined && { fullName }),
       ...(phone !== undefined && { phone }),
       ...(bio !== undefined && { bio }),
-      ownerUserId: Number(session.userId),
       // Handle media fields - extract ID if it's an object
       ...(profilePicture !== undefined && {
         profilePicture: typeof profilePicture === 'object' && profilePicture !== null
@@ -719,9 +747,8 @@ export async function PUT(request: NextRequest) {
           ? (resume as { id?: number }).id || resume
           : resume
       }),
-      // Skills are linked after save from the owning side (skill.candidate_profile)
+      // Skills are linked at create-time on skill.candidate_profile (documentId)
       // Remove IDs from components to avoid "Invalid key id" errors
-      // Strapi will create new entries (this may replace existing ones)
       ...(education !== undefined && Array.isArray(education) && {
         education: education.map((edu: Record<string, unknown>) => {
           // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -738,9 +765,9 @@ export async function PUT(request: NextRequest) {
       }),
     };
 
-    // 6. EXECUTE PROFILE UPDATE & POPULATE
+    // 6. EXECUTE PROFILE UPDATE — JWT so lifecycle can set/restore user relation
     const response = await fetchWithAuthFallback(
-      `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate=*`,
+      `${strapiUrl}/api/candidate-profiles/${verifiedTarget}?populate=*`,
       [userJwt, apiToken],
       {
         method: "PUT",
@@ -759,40 +786,6 @@ export async function PUT(request: NextRequest) {
     }
 
     if (!response.ok) {
-      // Retry without ownerUserId if Strapi schema isn't updated yet
-      const putErrorMsg =
-        (result?.error as { message?: string })?.message || "";
-      if (
-        response.status === 400 &&
-        String(putErrorMsg).toLowerCase().includes("owneruserid")
-      ) {
-        delete finalUpdateData.ownerUserId;
-        const retry = await fetchWithAuthFallback(
-          `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate=*`,
-          [userJwt, apiToken],
-          {
-            method: "PUT",
-            body: JSON.stringify({ data: finalUpdateData }),
-          }
-        );
-        const retryText = await retry.text();
-        try {
-          result = JSON.parse(retryText);
-        } catch {
-          result = { error: retryText };
-        }
-        if (retry.ok) {
-          const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
-          if (saved?.documentId || saved?.id) {
-            await updateSession({
-              candidateProfileDocumentId: saved.documentId,
-              candidateProfileId: saved.id,
-            });
-          }
-          return NextResponse.json(result, { status: 200 });
-        }
-      }
-
       console.error("Strapi PUT Error:", result);
       const errorMessage =
         (result?.error as { message?: string })?.message ||
@@ -807,14 +800,39 @@ export async function PUT(request: NextRequest) {
     }
 
     const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
-    if (saved?.documentId || saved?.id) {
+    const savedDocumentId =
+      saved?.documentId || profileDocumentId || null;
+
+    if (savedDocumentId || saved?.id) {
       await updateSession({
-        candidateProfileDocumentId: saved.documentId,
-        candidateProfileId: saved.id,
+        candidateProfileDocumentId: savedDocumentId || saved?.documentId,
+        candidateProfileId: saved?.id,
       });
     }
 
-    return NextResponse.json(result, { status: 200 });
+    if (savedDocumentId) {
+      await attachProfileToAuthenticatedUser({
+        profileDocumentId: savedDocumentId,
+        userJwt,
+        apiToken,
+        userId: session.userId,
+      });
+    }
+
+    const refreshed = savedDocumentId
+      ? await findCandidateProfileForUser({
+          userId: session.userId,
+          userDocumentId: session.userDocumentId,
+          profileDocumentId: savedDocumentId,
+          authToken: userJwt,
+          fallbackAuthToken: apiToken,
+        })
+      : null;
+
+    return NextResponse.json(
+      { data: refreshed || saved || result, meta: {} },
+      { status: 200 }
+    );
   } catch (error) {
     console.error("PUT Route Error:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
