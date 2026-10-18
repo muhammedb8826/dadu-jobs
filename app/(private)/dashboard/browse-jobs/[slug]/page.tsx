@@ -11,6 +11,8 @@ import { notFound } from "next/navigation";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
+import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile";
+import { getApplications, getSavedJobs } from "@/features/jobs";
 import { ApplyButton } from "./ApplyButton";
 import { SaveButton } from "../SaveButton";
 import { StrapiRichText } from "@/components/StrapiRichText";
@@ -108,41 +110,34 @@ export default async function DashboardJobDetailPage({
   
   if (strapiUrl) {
     try {
-      // Fetch profile with resume, education, and experience
-      const populateQuery = "populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[education]=*&populate[experience]=*";
-      const profileResponse = await fetch(
-        `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${session.userId}&${populateQuery}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-            ...(session.jwt && { Authorization: `Bearer ${session.jwt}` }),
-          },
-          cache: "no-store",
-        }
-      );
+      const populateQuery =
+        "populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[education]=*&populate[experience]=*&populate[user][fields][0]=id&populate[user][fields][1]=documentId";
+      const profile = await findCandidateProfileForUser({
+        userId: session.userId,
+        userDocumentId: session.userDocumentId,
+        profileDocumentId: session.candidateProfileDocumentId,
+        authToken: session.jwt,
+        fallbackAuthToken: apiToken,
+        populateQuery,
+      });
 
-      if (profileResponse.ok) {
-        const profileResult = await profileResponse.json();
-        const profile = Array.isArray(profileResult?.data) ? profileResult.data[0] : profileResult?.data;
-        
-        // Check for resume in various possible structures
-        if (profile?.resume) {
-          // Handle both { id: 123 } and direct ID formats
-          if (typeof profile.resume === 'object' && profile.resume.id) {
-            candidateResumeId = profile.resume.id;
-          } else if (typeof profile.resume === 'number') {
-            candidateResumeId = profile.resume;
-          }
+      if (profile) {
+        const resume = profile.resume as
+          | { id?: number }
+          | number
+          | null
+          | undefined;
+        if (resume && typeof resume === "object" && resume.id) {
+          candidateResumeId = resume.id;
+        } else if (typeof resume === "number") {
+          candidateResumeId = resume;
         }
-        
-        // Extract education and experience
-        if (profile?.education && Array.isArray(profile.education)) {
-          candidateEducation = profile.education;
+
+        if (Array.isArray(profile.education)) {
+          candidateEducation = profile.education as typeof candidateEducation;
         }
-        if (profile?.experience && Array.isArray(profile.experience)) {
-          candidateExperience = profile.experience;
+        if (Array.isArray(profile.experience)) {
+          candidateExperience = profile.experience as typeof candidateExperience;
         }
       }
     } catch (error) {
@@ -150,53 +145,12 @@ export default async function DashboardJobDetailPage({
     }
   }
 
-  // Check if user has already applied to this job
-  let hasApplied = false;
-  let isSaved = false;
-  if (strapiUrl) {
-    try {
-      const applicationResponse = await fetch(
-        `${strapiUrl}/api/applications?filters[user][id][$eq]=${session.userId}&filters[job][id][$eq]=${job.id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-          cache: "no-store",
-        }
-      );
-
-      if (applicationResponse.ok) {
-        const applicationResult = await applicationResponse.json();
-        hasApplied = applicationResult?.data && applicationResult.data.length > 0;
-      }
-    } catch (error) {
-      console.error("Error checking application status:", error);
-    }
-
-    // Check if user has saved this job
-    try {
-      const savedJobResponse = await fetch(
-        `${strapiUrl}/api/saved-jobs?filters[user][id][$eq]=${session.userId}&filters[job][id][$eq]=${job.id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-          },
-          cache: "no-store",
-        }
-      );
-
-      if (savedJobResponse.ok) {
-        const savedJobResult = await savedJobResponse.json();
-        isSaved = savedJobResult?.data && savedJobResult.data.length > 0;
-      }
-    } catch (error) {
-      console.error("Error checking saved job status:", error);
-    }
-  }
+  const [userApplications, userSavedJobs] = await Promise.all([
+    getApplications(Number(session.userId), session.jwt),
+    getSavedJobs(Number(session.userId), session.jwt),
+  ]);
+  const hasApplied = userApplications.some((app) => app.job?.id === job.id);
+  const isSaved = userSavedJobs.some((saved) => saved.job?.id === job.id);
 
   const isDeadlinePassed = new Date(job.deadline) < new Date();
   const companyLogoUrl = job.company ? resolveLogoUrl(job.company) : null;

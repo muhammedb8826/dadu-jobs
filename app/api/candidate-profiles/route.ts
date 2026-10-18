@@ -1,7 +1,112 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStrapiURL } from "@/lib/strapi/client";
-import { getSession } from "@/lib/auth/session";
+import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
+import { getSession, updateSession } from "@/lib/auth/session";
 import { isEmployer, isCandidate } from "@/lib/auth/rbac";
+import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile";
+
+const SKILL_LEVELS = new Set(["Beginner", "Intermediate", "Expert"]);
+
+/** Map UI / legacy levels to Strapi skill.level enum. */
+function normalizeSkillLevel(level?: string | null): string {
+  const value = String(level || "").trim();
+  if (SKILL_LEVELS.has(value)) return value;
+  const lower = value.toLowerCase();
+  if (lower === "advanced" || lower === "proficient") return "Intermediate";
+  if (lower === "junior" || lower === "basic") return "Beginner";
+  if (lower === "senior" || lower === "master") return "Expert";
+  return "Intermediate";
+}
+
+async function ensureSkillId(options: {
+  strapiUrl: string;
+  skillName: string;
+  level: string;
+  userJwt?: string;
+  apiToken?: string;
+}): Promise<string | number | null> {
+  const level = normalizeSkillLevel(options.level);
+  const tokens = [options.userJwt, options.apiToken];
+
+  const checkResponse = await fetchWithAuthFallback(
+    `${options.strapiUrl}/api/skills?filters[skillName][$eq]=${encodeURIComponent(options.skillName)}&filters[level][$eq]=${encodeURIComponent(level)}&pagination[limit]=1`,
+    tokens,
+    { cache: "no-store" }
+  );
+
+  if (checkResponse.ok) {
+    const existing = await checkResponse.json().catch(() => ({}));
+    const rows = Array.isArray(existing?.data)
+      ? existing.data
+      : existing?.data
+        ? [existing.data]
+        : [];
+    if (rows[0]) {
+      return rows[0].documentId || rows[0].id || null;
+    }
+  }
+
+  const createResponse = await fetchWithAuthFallback(
+    `${options.strapiUrl}/api/skills`,
+    tokens,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        data: {
+          skillName: options.skillName,
+          level,
+        },
+      }),
+    }
+  );
+
+  if (!createResponse.ok) {
+    const errorText = await createResponse.text().catch(() => "");
+    console.error(
+      `Failed to create skill "${options.skillName}":`,
+      createResponse.status,
+      errorText
+    );
+    return null;
+  }
+
+  const created = await createResponse.json().catch(() => ({}));
+  return created?.data?.documentId || created?.data?.id || null;
+}
+
+async function linkSkillsToProfile(options: {
+  strapiUrl: string;
+  profileRef: string | number;
+  skillIds: Array<string | number>;
+  userJwt?: string;
+  apiToken?: string;
+}) {
+  const tokens = [options.userJwt, options.apiToken];
+  await Promise.all(
+    options.skillIds.map(async (skillId) => {
+      try {
+        const response = await fetchWithAuthFallback(
+          `${options.strapiUrl}/api/skills/${skillId}`,
+          tokens,
+          {
+            method: "PUT",
+            body: JSON.stringify({
+              data: { candidate_profile: options.profileRef },
+            }),
+          }
+        );
+        if (!response.ok) {
+          console.error(
+            "Failed to link skill to profile:",
+            skillId,
+            await response.text().catch(() => "")
+          );
+        }
+      } catch (error) {
+        console.error("Failed to link skill to candidate profile:", skillId, error);
+      }
+    })
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,25 +132,53 @@ export async function GET(request: NextRequest) {
     const candidateId = searchParams.get("id");
     const documentId = searchParams.get("documentId");
     const myProfile = searchParams.get("myProfile") === "true";
+    const claimDocumentId = searchParams.get("claimDocumentId");
 
     // Build populate query for candidate profile
     // Skills are manyToOne relation - populate only specific fields to avoid reverse relation issues
     // Education and experience are components - can be populated with *
     // profilePicture and resume are media fields - populate only needed fields to avoid reverse relations
-    const populateQuery = "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
+    // Include user id/documentId so we can match the logged-in user in app code.
+    // Strapi Content API rejects filters[user] with "Invalid key user".
+    const populateQuery = "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=id&populate[user][fields][1]=documentId&populate[user][fields][2]=username&populate[user][fields][3]=email&populate[user][fields][4]=type";
 
     let url: string;
     
     // If candidate wants to view their own profile
     if (myProfile && isCandidate(session)) {
-      // Prefer documentId for Strapi v5, fallback to numeric id for backward compatibility
-      if (session.userDocumentId) {
-        url = `${strapiUrl}/api/candidate-profiles?filters[user][documentId][$eq]=${session.userDocumentId}&${populateQuery}`;
-      } else {
-        // Fallback for sessions created before documentId was added
-        const userId = Number(session.userId);
-        url = `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userId}&${populateQuery}`;
+      let mine = await findCandidateProfileForUser({
+        userId: session.userId,
+        userDocumentId: session.userDocumentId,
+        profileDocumentId: session.candidateProfileDocumentId,
+        authToken: session.jwt,
+        fallbackAuthToken: apiToken,
+        populateQuery,
+      });
+
+      // Reclaim an unowned / own profile via documentId from client localStorage
+      if (!mine && claimDocumentId && typeof claimDocumentId === "string") {
+        const claimed = await findCandidateProfileForUser({
+          profileDocumentId: claimDocumentId,
+          authToken: session.jwt,
+          fallbackAuthToken: apiToken,
+          populateQuery,
+        });
+        const ownerId = claimed?.ownerUserId;
+        const unowned = ownerId == null || ownerId === "";
+        const ownedByMe =
+          ownerId != null && String(ownerId) === String(session.userId);
+        if (claimed && (unowned || ownedByMe)) {
+          mine = claimed;
+        }
       }
+
+      if (mine?.documentId && mine.documentId !== session.candidateProfileDocumentId) {
+        await updateSession({
+          candidateProfileDocumentId: mine.documentId,
+          candidateProfileId: mine.id,
+        });
+      }
+      return NextResponse.json({ data: mine, meta: {} }, { status: 200 });
     } else if (candidateId) {
       // Employers can view any candidate, candidates can only view their own
       if (!isEmployer(session)) {
@@ -110,11 +243,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // If candidate is fetching their own profile, return single object instead of array
-    if (myProfile && isCandidate(session) && Array.isArray(result?.data) && result.data.length > 0) {
-      return NextResponse.json({ data: result.data[0], meta: result.meta }, { status: 200 });
-    }
-
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
     console.error("Candidate profile fetch error:", error);
@@ -168,165 +296,96 @@ export async function POST(request: NextRequest) {
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userId = Number(session.userId);
 
-    // Check if profile already exists for this user
-    const userProfileUrl = `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userId}&populate=user`;
-    
-    const verifyResponse = await fetch(userProfileUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
+    // Check if profile already exists for this user (without filters[user])
+    const existingProfile = await findCandidateProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      profileDocumentId: session.candidateProfileDocumentId,
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
     });
 
-    let existingProfileId: number | null = null;
-    
-    if (verifyResponse.ok) {
-      const verifyResult = await verifyResponse.json().catch(() => ({}));
-      const userProfiles = Array.isArray(verifyResult?.data) ? verifyResult.data : (verifyResult?.data ? [verifyResult.data] : []);
-      
-      if (userProfiles.length > 0) {
-        existingProfileId = userProfiles[0]?.id;
-        console.log("Existing candidate profile found, will update:", { profileId: existingProfileId, userId });
-      }
+    const existingProfileId: number | string | null = existingProfile?.id ?? null;
+    const existingProfileDocumentId: string | null =
+      existingProfile?.documentId ?? null;
+
+    if (existingProfile) {
+      console.log("Existing candidate profile found, will update:", {
+        profileId: existingProfileId,
+        documentId: existingProfileDocumentId,
+        userId,
+      });
     }
 
     // Prepare profile data
     const profileData = { ...body.data };
     
-    // Remove id if present (it's in the URL for PUT)
+    // Remove id/documentId if present (belongs in the URL, not body)
     delete profileData.id;
-    
-    // Associate with logged-in user
-    profileData.user = userId;
+    delete profileData.documentId;
+    // Strapi REST rejects `user` on this content-type ("Invalid key user").
+    // Ownership is tracked via ownerUserId (filterable integer) instead.
+    delete profileData.user;
+    profileData.ownerUserId = userId;
 
-    // Handle skills - they're a relation, so we need IDs (integer or documentId)
-    // Skills can be: numbers/strings (existing skill IDs), or objects (new/updated skills)
-    if (profileData.skills && Array.isArray(profileData.skills)) {
-      const skillIds: (number | string)[] = [];
-      
+    // Resolve skill IDs; link after save (skills relation is owned by skill.candidate_profile)
+    const skillIdsToLink: (number | string)[] = [];
+    if (Array.isArray(profileData.skills)) {
       for (const skillItem of profileData.skills) {
-        // If it's already a number or string (ID), just use it
         if (typeof skillItem === "number" || typeof skillItem === "string") {
-          skillIds.push(skillItem);
+          skillIdsToLink.push(skillItem);
           continue;
         }
-        
-        // Otherwise, it's an object with skill data
-        const skill = skillItem as { id?: number; documentId?: string; skillName?: string; level?: string };
-        // Use documentId if available, otherwise use id
-        const skillIdentifier = skill.documentId || skill.id;
-        
-        if (skillIdentifier) {
-          // Existing skill - update it
-          try {
-            const updateResponse = await fetch(`${strapiUrl}/api/skills/${skillIdentifier}`, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-                ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-              },
-              body: JSON.stringify({
-                data: {
-                  skillName: skill.skillName,
-                  level: skill.level,
-                },
-              }),
-            });
-            
-            if (updateResponse.ok) {
-              // Return the same identifier (documentId or id)
-              skillIds.push(skillIdentifier);
-            } else {
-              console.error("Failed to update skill:", skillIdentifier);
-            }
-          } catch (error) {
-            console.error("Error updating skill:", error);
+        if (typeof skillItem === "object" && skillItem !== null) {
+          const skill = skillItem as {
+            id?: number;
+            documentId?: string;
+            skillName?: string;
+            level?: string;
+          };
+          if (skill.documentId || skill.id) {
+            skillIdsToLink.push(skill.documentId || skill.id!);
+            continue;
           }
-        } else if (skill.skillName) {
-          // New skill - check if exists, then create or update
-          try {
-            const checkResponse = await fetch(
-              `${strapiUrl}/api/skills?filters[skillName][$eq]=${encodeURIComponent(skill.skillName)}`,
-              {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-                },
-              }
-            );
-            
-            let skillId: number | string | null = null;
-            
-            if (checkResponse.ok) {
-              const checkResult = await checkResponse.json().catch(() => ({}));
-              const existingSkills = Array.isArray(checkResult?.data) ? checkResult.data : (checkResult?.data ? [checkResult.data] : []);
-              
-              if (existingSkills.length > 0) {
-                // Prefer documentId, fall back to id
-                skillId = existingSkills[0].documentId || existingSkills[0].id;
-                const updateResponse = await fetch(`${strapiUrl}/api/skills/${skillId}`, {
-                  method: "PUT",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-                    ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-                  },
-                  body: JSON.stringify({
-                    data: {
-                      skillName: skill.skillName,
-                      level: skill.level,
-                    },
-                  }),
-                });
-                
-                if (!updateResponse.ok) {
-                  skillId = null;
-                }
-              }
-            }
-            
-            if (!skillId) {
-              // Create new skill
-              const createResponse = await fetch(`${strapiUrl}/api/skills`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-                  ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-                },
-                body: JSON.stringify({
-                  data: {
-                    skillName: skill.skillName,
-                    level: skill.level,
-                  },
-                }),
-              });
-              
-              if (createResponse.ok) {
-                const createResult = await createResponse.json().catch(() => ({}));
-                const createdSkill = createResult?.data;
-                // Prefer documentId, fall back to id
-                if (createdSkill?.documentId) {
-                  skillId = createdSkill.documentId;
-                } else if (createdSkill?.id) {
-                  skillId = createdSkill.id;
-                }
-              }
-            }
-            
-            if (skillId) {
-              skillIds.push(skillId);
-            }
-          } catch (error) {
-            console.error("Error creating skill:", error);
+          if (skill.skillName && skill.level) {
+            const skillId = await ensureSkillId({
+              strapiUrl,
+              skillName: skill.skillName,
+              level: skill.level,
+              userJwt,
+              apiToken,
+            });
+            if (skillId) skillIdsToLink.push(skillId);
           }
         }
       }
-      
-      profileData.skills = skillIds;
+    }
+    delete profileData.skills;
+
+    // Drop empty component rows that would fail date/blocks validation
+    if (Array.isArray(profileData.education)) {
+      profileData.education = (profileData.education as Array<Record<string, unknown>>).filter(
+        (edu) => edu.institution || edu.degree || edu.fieldOfStudy
+      );
+    }
+    if (Array.isArray(profileData.experience)) {
+      profileData.experience = (profileData.experience as Array<Record<string, unknown>>)
+        .filter((exp) => exp.companyName || exp.jobTitle)
+        .map((exp) => {
+          const next = { ...exp };
+          // blocks field must be an array of nodes, never a plain string
+          if (typeof next.description === "string") {
+            const text = next.description.trim();
+            next.description = text
+              ? [{ type: "paragraph", children: [{ type: "text", text }] }]
+              : [];
+          }
+          if (next.isCurrent) {
+            delete next.endDate;
+          }
+          return next;
+        });
     }
 
     // Handle education and experience - they're components
@@ -334,60 +393,146 @@ export async function POST(request: NextRequest) {
     // If ID is present, it updates; if not, it creates a new one
     // No need to remove IDs - Strapi handles it automatically
 
-    let response: Response;
-    let result: Record<string, unknown> = {};
+    const saveWithToken = async (token?: string) => {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
 
-    if (existingProfileId) {
-      // Update existing profile
-      const updateUrl = `${strapiUrl}/api/candidate-profiles/${existingProfileId}`;
-      response = await fetch(updateUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-          ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
-        body: JSON.stringify({ data: profileData }),
-      });
-    } else {
-      // Create new profile
-      response = await fetch(`${strapiUrl}/api/candidate-profiles`, {
+      // Prefer documentId for Strapi 5 updates
+      const targetId = existingProfileDocumentId || existingProfileId;
+      if (targetId) {
+        return fetch(`${strapiUrl}/api/candidate-profiles/${targetId}`, {
+          method: "PUT",
+          headers,
+          body: JSON.stringify({ data: profileData }),
+        });
+      }
+
+      return fetch(`${strapiUrl}/api/candidate-profiles`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-          ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-        },
+        headers,
         body: JSON.stringify({ data: profileData }),
       });
+    };
+
+    // Prefer user JWT so Strapi can attach ctx.state.user on create/update.
+    // Fall back to API token only if JWT is missing.
+    if (!userJwt && !apiToken) {
+      return NextResponse.json(
+        { error: "No authentication token available" },
+        { status: 500 }
+      );
     }
 
-    const responseText = await response.text();
-    if (responseText) {
-      try {
-        result = JSON.parse(responseText);
-      } catch {
-        result = { error: responseText };
+    const parseResult = async (res: Response) => {
+      const responseText = await res.text();
+      let parsed: Record<string, unknown> = {};
+      if (responseText) {
+        try {
+          parsed = JSON.parse(responseText);
+        } catch {
+          parsed = { error: responseText };
+        }
       }
+      return parsed;
+    };
+
+    let response = await saveWithToken(userJwt || apiToken);
+    let result = await parseResult(response);
+
+    // If Strapi hasn't been restarted yet, ownerUserId may be unknown — retry without it
+    const firstError =
+      typeof result?.error === "object" && result.error
+        ? (result.error as { message?: string }).message
+        : "";
+    if (
+      !response.ok &&
+      response.status === 400 &&
+      String(firstError).toLowerCase().includes("owneruserid")
+    ) {
+      delete profileData.ownerUserId;
+      response = await saveWithToken(userJwt || apiToken);
+      result = await parseResult(response);
+    }
+
+    if (
+      !response.ok &&
+      userJwt &&
+      apiToken &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      console.warn(
+        "Candidate profile save with user JWT failed, retrying with API token..."
+      );
+      response = await saveWithToken(apiToken);
+      result = await parseResult(response);
     }
 
     if (!response.ok) {
+      const strapiError = result?.error as
+        | { message?: string; details?: unknown }
+        | string
+        | undefined;
       const errorMessage =
-        (result?.error as { message?: string })?.message ||
-        (result?.error as string) ||
-        result?.message ||
+        (typeof strapiError === "object" ? strapiError?.message : strapiError) ||
+        (result?.message as string | undefined) ||
         "Failed to save candidate profile";
+
+      console.error("Candidate profile Strapi save failed:", {
+        status: response.status,
+        error: result,
+        existingProfileId,
+      });
       
       return NextResponse.json(
-        { error: errorMessage },
+        {
+          error: errorMessage,
+          details: typeof strapiError === "object" ? strapiError?.details : undefined,
+        },
         { status: response.status || 500 }
       );
+    }
+
+    const savedProfile = (result as { data?: { id?: number; documentId?: string } })?.data;
+    const savedProfileRef = savedProfile?.documentId || savedProfile?.id;
+    if (savedProfileRef && skillIdsToLink.length > 0) {
+      await linkSkillsToProfile({
+        strapiUrl,
+        profileRef: savedProfileRef,
+        skillIds: skillIdsToLink,
+        userJwt,
+        apiToken,
+      });
+    }
+
+    // Persist profile ids on the session so reopen/edit can load this profile
+    if (savedProfile?.documentId || savedProfile?.id) {
+      await updateSession({
+        candidateProfileDocumentId: savedProfile.documentId,
+        candidateProfileId: savedProfile.id,
+      });
     }
 
     return NextResponse.json(result, { status: existingProfileId ? 200 : 201 });
   } catch (error) {
     console.error("Candidate profile save error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to save candidate profile";
+    const causeCode =
+      typeof error === "object" &&
+      error &&
+      "cause" in error &&
+      typeof (error as { cause?: { code?: string } }).cause === "object"
+        ? (error as { cause?: { code?: string } }).cause?.code
+        : undefined;
+
+    const errorMessage =
+      causeCode === "ECONNREFUSED"
+        ? "Cannot connect to the API server. Please make sure Strapi is running on the configured URL."
+        : error instanceof Error
+          ? error.message
+          : "Failed to save candidate profile";
     
     return NextResponse.json(
       { error: errorMessage },
@@ -445,37 +590,30 @@ export async function PUT(request: NextRequest) {
 
     const userJwt = session.jwt;
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-    const userId = Number(session.userId);
 
-    // Verify the profile belongs to the logged-in user
-    const userProfileUrl = `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userId}&populate=user`;
-    
-    const verifyResponse = await fetch(userProfileUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
+    // Verify the profile belongs to the logged-in user (no filters[user])
+    const userProfile = await findCandidateProfileForUser({
+      userId: session.userId,
+      userDocumentId: session.userDocumentId,
+      profileDocumentId:
+        session.candidateProfileDocumentId ||
+        (typeof body.data.documentId === "string" ? body.data.documentId : null),
+      authToken: userJwt,
+      fallbackAuthToken: apiToken,
+      populateQuery: "populate[user][fields][0]=id&populate[user][fields][1]=documentId",
     });
 
-    if (verifyResponse.ok) {
-      const verifyResult = await verifyResponse.json().catch(() => ({}));
-      const userProfiles = Array.isArray(verifyResult?.data) ? verifyResult.data : (verifyResult?.data ? [verifyResult.data] : []);
-      
-      if (userProfiles.length > 0) {
-        const userProfile = userProfiles[0];
-        // Check both id and documentId
-        const profileId = body.data.id ? Number(body.data.id) : null;
-        const profileDocumentId = body.data.documentId || null;
-        if (
-          (profileId && userProfile.id !== profileId) ||
-          (profileDocumentId && userProfile.documentId !== profileDocumentId)
-        ) {
-          return NextResponse.json(
-            { error: "Access denied. You can only update your own profile." },
-            { status: 403 }
-          );
-        }
+    if (userProfile) {
+      const profileId = body.data.id ? Number(body.data.id) : null;
+      const profileDocumentId = body.data.documentId || null;
+      if (
+        (profileId && userProfile.id !== profileId) ||
+        (profileDocumentId && userProfile.documentId !== profileDocumentId)
+      ) {
+        return NextResponse.json(
+          { error: "Access denied. You can only update your own profile." },
+          { status: 403 }
+        );
       }
     }
 
@@ -526,125 +664,64 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    // 4. PROCESS SKILLS (Sequential with await - ensures creation completes before profile update)
-    // Use for...of to ensure we await each creation properly
-    // If skills are provided, start from empty; otherwise, preserve existing relations
+    // 4. PROCESS SKILLS — create/find via Content API, then link from skill side
+    // (skills relation is mappedBy on candidate-profile, so it can't be set on the profile body)
     const finalSkillIds: (string | number)[] = skillsProvided ? [] : [...existingSkillIds];
-
     const failedSkills: string[] = [];
 
     if (Array.isArray(skills)) {
-      // Use for...of to ensure sequential processing and proper awaiting
       for (const item of skills) {
-        // CASE A: It's already an ID (number or string)
         if (typeof item === "number" || typeof item === "string") {
-          // Add to final list if not already present
-          if (!finalSkillIds.includes(item)) {
-            finalSkillIds.push(item);
-          }
+          if (!finalSkillIds.includes(item)) finalSkillIds.push(item);
           continue;
         }
-        
-        // CASE B: It's an object with skill data
+
         if (typeof item === "object" && item !== null) {
-          const skill = item as { id?: number; documentId?: string; skillName?: string; level?: string };
-          
-          // If it has an ID, use it directly (existing skill)
+          const skill = item as {
+            id?: number;
+            documentId?: string;
+            skillName?: string;
+            level?: string;
+          };
+
           if (skill.documentId || skill.id) {
             const skillId = skill.documentId || skill.id!;
-            // Add to final list if not already present
-            if (!finalSkillIds.includes(skillId)) {
-              finalSkillIds.push(skillId);
-            }
+            if (!finalSkillIds.includes(skillId)) finalSkillIds.push(skillId);
             continue;
           }
-          
-          // CASE C: It's a new skill object { skillName, level } - create or find it
+
           if (skill.skillName && skill.level) {
-            try {
-              // Check for existing skill with same name AND level (more specific check)
-              const checkResponse = await fetch(
-                `${strapiUrl}/api/skills?filters[skillName][$eq]=${encodeURIComponent(skill.skillName)}&filters[level][$eq]=${encodeURIComponent(skill.level)}`,
-                {
-                  method: "GET",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-                    ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
-                  },
-                }
+            const skillId = await ensureSkillId({
+              strapiUrl,
+              skillName: skill.skillName,
+              level: skill.level,
+              userJwt,
+              apiToken,
+            });
+            if (skillId) {
+              if (!finalSkillIds.includes(skillId)) finalSkillIds.push(skillId);
+            } else {
+              failedSkills.push(
+                `${skill.skillName} (${normalizeSkillLevel(skill.level)})`
               );
-              
-              let skillId: number | string | null = null;
-              
-              if (checkResponse.ok) {
-                const existing = await checkResponse.json().catch(() => ({}));
-                const existingSkills = Array.isArray(existing?.data) ? existing.data : (existing?.data ? [existing.data] : []);
-                
-                if (existingSkills.length > 0) {
-                  // Use existing skill ID (prefers documentId for Strapi 5)
-                  skillId = existingSkills[0].documentId || existingSkills[0].id;
-                }
-              }
-              
-              // Create new skill if it doesn't exist
-              if (!skillId) {
-                const createResponse = await fetch(`${strapiUrl}/api/skills`, {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-                    ...(!apiToken && userJwt && { Authorization: `Bearer ${userJwt}` }),
-                  },
-                  body: JSON.stringify({
-                    data: {
-                      skillName: skill.skillName,
-                      level: skill.level,
-                    },
-                  }),
-                });
-                
-                if (createResponse.ok) {
-                  const newSkill = await createResponse.json().catch(() => ({}));
-                  if (newSkill?.data) {
-                    // Prefer documentId for Strapi 5
-                    skillId = newSkill.data.documentId || newSkill.data.id;
-                  }
-                } else {
-                  const errorText = await createResponse.text().catch(() => "Unknown error");
-                  console.error(`Failed to create skill "${skill.skillName}":`, errorText);
-                }
-              }
-              
-              if (skillId) {
-                // Add to final list if not already present
-                if (!finalSkillIds.includes(skillId)) {
-                  finalSkillIds.push(skillId);
-                }
-              } else {
-                console.error(`Skill processing failed for: ${skill.skillName}`);
-                failedSkills.push(`${skill.skillName} (${skill.level})`);
-              }
-            } catch (error) {
-              console.error("Skill error:", error);
-              // Continue with other skills even if one fails (error resilience)
-              failedSkills.push(`${skill.skillName} (${skill.level})`);
             }
-          } else {
-            failedSkills.push(skill.skillName ? `${skill.skillName} (missing level)` : "Unnamed skill");
+          } else if (skill.skillName) {
+            failedSkills.push(`${skill.skillName} (missing level)`);
           }
         }
       }
     }
 
-    // Remove duplicates (in case of any overlap) - ensure unique IDs
     const uniqueSkillIds = [...new Set(finalSkillIds)];
 
-    if (skillsProvided && failedSkills.length > 0) {
+    if (skillsProvided && failedSkills.length > 0 && uniqueSkillIds.length === 0) {
       return NextResponse.json(
         { error: `Failed to save skills: ${failedSkills.join(", ")}` },
         { status: 400 }
       );
+    }
+    if (failedSkills.length > 0) {
+      console.warn("Some skills could not be saved:", failedSkills);
     }
 
     // 5. BUILD THE PAYLOAD
@@ -655,6 +732,7 @@ export async function PUT(request: NextRequest) {
       ...(fullName !== undefined && { fullName }),
       ...(phone !== undefined && { phone }),
       ...(bio !== undefined && { bio }),
+      ownerUserId: Number(session.userId),
       // Handle media fields - extract ID if it's an object
       ...(profilePicture !== undefined && {
         profilePicture: typeof profilePicture === 'object' && profilePicture !== null
@@ -666,8 +744,7 @@ export async function PUT(request: NextRequest) {
           ? (resume as { id?: number }).id || resume
           : resume
       }),
-      // If skills were provided, include them even if empty to allow clearing relations
-      ...(skillsProvided && { skills: uniqueSkillIds }),
+      // Skills are linked after save from the owning side (skill.candidate_profile)
       // Remove IDs from components to avoid "Invalid key id" errors
       // Strapi will create new entries (this may replace existing ones)
       ...(education !== undefined && Array.isArray(education) && {
@@ -687,18 +764,14 @@ export async function PUT(request: NextRequest) {
     };
 
     // 6. EXECUTE PROFILE UPDATE & POPULATE
-    // All skills have been processed and we have a clean array of IDs
-    // Components have IDs removed to prevent "Invalid key id" errors
-    // Added ?populate=* so the response includes skills, education, and experience
-    const response = await fetch(`${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate=*`, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userJwt && { Authorization: `Bearer ${userJwt}` }),
-        ...(!userJwt && apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
-      body: JSON.stringify({ data: finalUpdateData }),
-    });
+    const response = await fetchWithAuthFallback(
+      `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate=*`,
+      [userJwt, apiToken],
+      {
+        method: "PUT",
+        body: JSON.stringify({ data: finalUpdateData }),
+      }
+    );
 
     const responseText = await response.text();
     let result: Record<string, unknown> = {};
@@ -711,6 +784,50 @@ export async function PUT(request: NextRequest) {
     }
 
     if (!response.ok) {
+      // Retry without ownerUserId if Strapi schema isn't updated yet
+      const putErrorMsg =
+        (result?.error as { message?: string })?.message || "";
+      if (
+        response.status === 400 &&
+        String(putErrorMsg).toLowerCase().includes("owneruserid")
+      ) {
+        delete finalUpdateData.ownerUserId;
+        const retry = await fetchWithAuthFallback(
+          `${strapiUrl}/api/candidate-profiles/${targetIdentifier}?populate=*`,
+          [userJwt, apiToken],
+          {
+            method: "PUT",
+            body: JSON.stringify({ data: finalUpdateData }),
+          }
+        );
+        const retryText = await retry.text();
+        try {
+          result = JSON.parse(retryText);
+        } catch {
+          result = { error: retryText };
+        }
+        if (retry.ok) {
+          const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
+          const profileRef = saved?.documentId || saved?.id || targetIdentifier;
+          if (skillsProvided && uniqueSkillIds.length > 0) {
+            await linkSkillsToProfile({
+              strapiUrl,
+              profileRef,
+              skillIds: uniqueSkillIds,
+              userJwt,
+              apiToken,
+            });
+          }
+          if (saved?.documentId || saved?.id) {
+            await updateSession({
+              candidateProfileDocumentId: saved.documentId,
+              candidateProfileId: saved.id,
+            });
+          }
+          return NextResponse.json(result, { status: 200 });
+        }
+      }
+
       console.error("Strapi PUT Error:", result);
       const errorMessage =
         (result?.error as { message?: string })?.message ||
@@ -722,6 +839,24 @@ export async function PUT(request: NextRequest) {
         { error: errorMessage },
         { status: response.status || 500 }
       );
+    }
+
+    const saved = (result as { data?: { id?: number; documentId?: string } })?.data;
+    const profileRef = saved?.documentId || saved?.id || targetIdentifier;
+    if (skillsProvided && uniqueSkillIds.length > 0) {
+      await linkSkillsToProfile({
+        strapiUrl,
+        profileRef,
+        skillIds: uniqueSkillIds,
+        userJwt,
+        apiToken,
+      });
+    }
+    if (saved?.documentId || saved?.id) {
+      await updateSession({
+        candidateProfileDocumentId: saved.documentId,
+        candidateProfileId: saved.id,
+      });
     }
 
     return NextResponse.json(result, { status: 200 });

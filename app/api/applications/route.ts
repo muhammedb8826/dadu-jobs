@@ -32,36 +32,66 @@ export async function GET(request: NextRequest) {
     // Build populate query
     const populateQuery = "populate[job][populate][categories][fields][0]=id&populate[job][populate][categories][fields][1]=name&populate[job][populate][categories][fields][2]=slug&populate[job][populate][salary]=*&populate[job][populate][company]=*&populate[job][populate][company][populate][logo][fields][0]=id&populate[job][populate][company][populate][logo][fields][1]=url&populate[job][populate][company][populate][logo][fields][2]=name&populate[job][populate][company][populate][logo][fields][3]=alternativeText&populate[job][populate][company][populate][logo][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=username&populate[user][fields][2]=email&populate[user][fields][3]=type";
 
-    let url = `${strapiUrl}/api/applications?${populateQuery}`;
-
-    if (userId) {
-      url = `${strapiUrl}/api/applications?filters[user][id][$eq]=${userId}&${populateQuery}&sort[0]=createdAt:desc`;
-    } else if (jobDocumentId) {
+    // Prefer job filters (allowed). Avoid filters[user] — match in app code below.
+    let url = `${strapiUrl}/api/applications?${populateQuery}&sort[0]=createdAt:desc&pagination[pageSize]=100`;
+    if (jobDocumentId) {
       url = `${strapiUrl}/api/applications?filters[job][documentId][$eq]=${jobDocumentId}&${populateQuery}&sort[0]=createdAt:desc`;
     } else if (jobId) {
       url = `${strapiUrl}/api/applications?filters[job][id][$eq]=${jobId}&${populateQuery}&sort[0]=createdAt:desc`;
     }
 
-    const response = await fetch(url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(apiToken && { Authorization: `Bearer ${apiToken}` }),
-      },
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => "Unknown error");
-      console.error("getApplications: Response not OK. Status:", response.status, "Error:", errorText);
+    const tokens = [session.jwt, apiToken].filter(Boolean) as string[];
+    let response: Response | null = null;
+    let lastError = "";
+    for (let i = 0; i < (tokens.length || 1); i++) {
+      const token = tokens[i];
+      response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        cache: "no-store",
+      });
+      if (response.ok) break;
+      lastError = await response.text().catch(() => "Unknown error");
+      if (
+        (response.status === 401 || response.status === 403) &&
+        i < tokens.length - 1
+      ) {
+        continue;
+      }
+      console.error(
+        "getApplications: Response not OK. Status:",
+        response.status,
+        "Error:",
+        lastError
+      );
       return NextResponse.json(
         { error: "Failed to fetch applications" },
         { status: response.status }
       );
     }
 
-    const result = await response.json();
-    return NextResponse.json(result, { status: 200 });
+    const result = await response!.json();
+    let data = Array.isArray(result?.data)
+      ? result.data
+      : result?.data
+        ? [result.data]
+        : [];
+
+    if (userId) {
+      data = data.filter((app: { user?: { id?: number | string } | number | string }) => {
+        const linked = app.user;
+        if (linked == null) return false;
+        if (typeof linked === "number" || typeof linked === "string") {
+          return String(linked) === String(userId);
+        }
+        return String(linked.id) === String(userId);
+      });
+    }
+
+    return NextResponse.json({ ...result, data }, { status: 200 });
   } catch (error) {
     console.error("Applications fetch error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to fetch applications";

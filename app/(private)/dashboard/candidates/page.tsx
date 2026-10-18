@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { findCandidateProfilesForUsers } from "@/lib/strapi/candidate-profile";
 import { User, Mail, Phone, FileText } from "lucide-react";
 import { getEmployerApplications } from "@/features/jobs";
 
@@ -46,40 +47,19 @@ type CandidateRow = {
 
 async function getCandidates(userIds: number[], sessionJwt?: string): Promise<CandidateProfile[]> {
   try {
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return [];
-    }
-
     if (userIds.length === 0) {
       return [];
     }
 
-    const inQuery = userIds.join(",");
-    const response = await fetch(`${strapiUrl}/api/candidate-profiles?filters[user][id][$in]=${inQuery}&populate[skills]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(sessionJwt
-          ? { Authorization: `Bearer ${sessionJwt}` }
-          : process.env.NEXT_PUBLIC_API_TOKEN
-            ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_TOKEN}` }
-            : {}),
-      },
-      cache: "no-store",
+    const profiles = await findCandidateProfilesForUsers({
+      userIds,
+      authToken: sessionJwt,
+      fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
+      populateQuery:
+        "populate[skills]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
     });
 
-    if (!response.ok) {
-      return [];
-    }
-
-    const result = await response.json();
-    
-    if (result?.data) {
-      return Array.isArray(result.data) ? result.data : [result.data];
-    }
-    
-    return [];
+    return profiles as CandidateProfile[];
   } catch (error) {
     console.error("Error fetching candidates:", error);
     return [];

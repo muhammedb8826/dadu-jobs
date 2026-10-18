@@ -1,4 +1,4 @@
-import { getStrapiURL } from "@/lib/strapi/client";
+import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
 import type { Job, Category } from "../types/job.types";
 
 // Populate query - use * for company but explicitly populate nested relations
@@ -34,11 +34,11 @@ export async function fetchCategories(apiToken?: string): Promise<Category[]> {
     throw new Error("Strapi API is not configured");
   }
 
-  const response = await fetch(`${strapiUrl}/api/categories?populate=*`, {
-    method: "GET",
-    headers: getAuthHeaders(apiToken),
-    cache: "no-store",
-  });
+  const response = await fetchWithAuthFallback(
+    `${strapiUrl}/api/categories?populate=*`,
+    [apiToken],
+    { cache: "no-store" }
+  );
 
   if (!response.ok) {
     throw new Error("Failed to fetch categories");
@@ -67,9 +67,7 @@ export async function fetchJobById(
   const url = `${strapiUrl}/api/jobs/${jobId}?${POPULATE_QUERY}`;
   console.log("fetchJobById: Fetching from URL:", url);
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getAuthHeaders(apiToken, userJwt),
+  const response = await fetchWithAuthFallback(url, [userJwt, apiToken], {
     cache: "no-store",
   });
 
@@ -80,12 +78,12 @@ export async function fetchJobById(
       console.log("fetchJobById: 404 received, trying filter by id field...");
       const filterUrl = `${strapiUrl}/api/jobs?filters[id][$eq]=${jobId}&${POPULATE_QUERY}&pagination[limit]=1`;
       console.log("fetchJobById: Trying filter URL:", filterUrl);
-      
-      const filterRes = await fetch(filterUrl, {
-        method: "GET",
-        headers: getAuthHeaders(apiToken, userJwt),
-        cache: "no-store",
-      });
+
+      const filterRes = await fetchWithAuthFallback(
+        filterUrl,
+        [userJwt, apiToken],
+        { cache: "no-store" }
+      );
 
       if (filterRes.ok) {
         const filterData = await filterRes.json();
@@ -100,7 +98,7 @@ export async function fetchJobById(
     const errorText = await response.text().catch(() => "Unknown error");
     console.error("fetchJobById: Response not OK. Status:", response.status);
     console.error("fetchJobById: Error response:", errorText);
-    
+
     throw new Error(`Job ${jobId} not found.`);
   }
 
@@ -123,9 +121,7 @@ export async function fetchJobBySlug(
 
   const url = `${strapiUrl}/api/jobs?filters[slug][$eq]=${encodeURIComponent(slug)}&${POPULATE_QUERY}&pagination[limit]=1`;
 
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getAuthHeaders(apiToken),
+  const response = await fetchWithAuthFallback(url, [apiToken], {
     cache: "no-store",
   });
 

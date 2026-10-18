@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getStrapiURL } from "@/lib/strapi/client";
-import { createSession } from "@/lib/auth/session";
+import { createSession, parseUserType } from "@/lib/auth/session";
 import { UserType } from "@/lib/types/user.types";
 
 type StrapiAuthResponse = {
@@ -21,6 +21,64 @@ type StrapiAuthResponse = {
     message?: string;
   };
 };
+
+async function resolveUserTypeAndDocumentId(
+  strapiUrl: string,
+  jwt: string,
+  userId: number,
+  authUser?: StrapiAuthResponse["user"]
+): Promise<{ userType?: UserType; userDocumentId?: string }> {
+  // Prefer type from the auth payload when available
+  let userType = parseUserType(authUser?.type);
+  let userDocumentId = authUser?.documentId;
+
+  if (userType && userDocumentId) {
+    return { userType, userDocumentId };
+  }
+
+  const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+  const endpoints: Array<{ url: string; token: string }> = [
+    { url: `${strapiUrl}/api/users/me`, token: jwt },
+    { url: `${strapiUrl}/api/users/${userId}`, token: jwt },
+  ];
+
+  if (apiToken) {
+    endpoints.push({
+      url: `${strapiUrl}/api/users/${userId}`,
+      token: apiToken,
+    });
+  }
+
+  for (const endpoint of endpoints) {
+    try {
+      const userResponse = await fetch(endpoint.url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${endpoint.token}`,
+        },
+        cache: "no-store",
+      });
+
+      if (!userResponse.ok) {
+        continue;
+      }
+
+      const userData = await userResponse.json().catch(() => ({}));
+      userType = userType || parseUserType(userData?.type);
+      userDocumentId =
+        userDocumentId || (userData?.documentId as string | undefined);
+
+      if (userType) {
+        break;
+      }
+    } catch (error) {
+      console.error(`Error fetching user data from ${endpoint.url}:`, error);
+    }
+  }
+
+  return { userType, userDocumentId };
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -95,31 +153,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch full user data to get the type field and documentId
-    // The auth/local endpoint may not return all fields, so we fetch the user separately
-    let userType: UserType | undefined;
-    let userDocumentId: string | undefined;
-    try {
-      const userResponse = await fetch(`${strapiUrl}/api/users/${authData.user.id}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${authData.jwt}`,
-        },
-      });
+    const { userType, userDocumentId } = await resolveUserTypeAndDocumentId(
+      strapiUrl,
+      authData.jwt,
+      authData.user.id,
+      authData.user
+    );
 
-      if (userResponse.ok) {
-        const userData = await userResponse.json().catch(() => ({}));
-        const type = userData?.type as string | undefined;
-        if (type === UserType.EMPLOYER || type === UserType.CANDIDATE) {
-          userType = type as UserType;
-        }
-        // Capture documentId for Strapi v5 filtering
-        userDocumentId = userData?.documentId as string | undefined;
-      }
-    } catch (error) {
-      console.error("Error fetching user data:", error);
-      // Continue without user type/documentId - they're optional
+    if (!userType) {
+      console.warn(
+        `Login succeeded for user ${authData.user.id}, but user type could not be resolved from Strapi.`
+      );
     }
 
     // Create session with user data from Strapi including JWT token, user type, and documentId
@@ -140,6 +184,7 @@ export async function POST(request: NextRequest) {
           id: authData.user.id,
           firstName: authData.user.firstName || authData.user.username,
           email: authData.user.email,
+          type: userType,
         },
       },
       { status: 200 }
@@ -152,5 +197,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-
-

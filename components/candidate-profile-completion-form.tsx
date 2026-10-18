@@ -88,157 +88,139 @@ type CandidateProfile = {
 };
 
 type CandidateProfileCompletionFormProps = {
-  initialData?: CandidateProfile;
+  initialData?: Partial<CandidateProfile> | null;
   isEditMode?: boolean;
 };
 
-export function CandidateProfileCompletionForm({ 
-  initialData, 
-  isEditMode = false 
+const PROFILE_DOC_KEY = "dadu_candidate_profile_documentId";
+const SKILL_LEVELS = ["Beginner", "Intermediate", "Expert"] as const;
+
+function normalizeSkillLevel(level?: string | null): string {
+  if (level && (SKILL_LEVELS as readonly string[]).includes(level)) return level;
+  const lower = String(level || "").toLowerCase();
+  if (lower === "advanced" || lower === "proficient") return "Intermediate";
+  if (lower === "junior" || lower === "basic") return "Beginner";
+  if (lower === "senior" || lower === "master") return "Expert";
+  return "Intermediate";
+}
+
+function profileToFormData(profile: Partial<CandidateProfile>): CandidateProfileFormData {
+  return {
+    fullName: profile.fullName || "",
+    phone: profile.phone || "",
+    bio: profile.bio || "",
+    profilePicture: profile.profilePicture?.id || null,
+    resume: profile.resume?.id || null,
+    skills:
+      profile.skills?.map((s) => ({
+        id: s.id,
+        skillName: s.skillName,
+        level: normalizeSkillLevel(s.level),
+      })) || [],
+    education:
+      profile.education?.map((e) => ({
+        id: e.id,
+        institution: e.institution,
+        degree: e.degree,
+        fieldOfStudy: e.fieldOfStudy,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        description: e.description,
+      })) || [],
+    experience:
+      profile.experience?.map((e) => ({
+        id: e.id,
+        companyName: e.companyName,
+        jobTitle: e.jobTitle,
+        location: e.location,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        isCurrent: e.isCurrent,
+        description: e.description,
+      })) || [],
+  };
+}
+
+export function CandidateProfileCompletionForm({
+  initialData,
+  isEditMode = false,
 }: CandidateProfileCompletionFormProps = {}) {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(!isEditMode); // Skip loading if we have initial data
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [profileId, setProfileId] = useState<number | null>(initialData?.id || null);
-  const [profileDocumentId, setProfileDocumentId] = useState<string | null>(initialData?.documentId || null);
+  const [profileDocumentId, setProfileDocumentId] = useState<string | null>(
+    initialData?.documentId || null
+  );
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
   const [resumeUrl, setResumeUrl] = useState<string | null>(null);
   const [isUploadingPicture, setIsUploadingPicture] = useState(false);
   const [isUploadingResume, setIsUploadingResume] = useState(false);
 
-  const [formData, setFormData] = useState<CandidateProfileFormData>({
-    fullName: initialData?.fullName || "",
-    phone: initialData?.phone || "",
-    bio: initialData?.bio || "",
-    profilePicture: initialData?.profilePicture?.id || null,
-    resume: initialData?.resume?.id || null,
-    skills: initialData?.skills?.map((s: { id: number; skillName: string; level: string }) => ({
-      id: s.id,
-      skillName: s.skillName,
-      level: s.level,
-    })) || [],
-    education: initialData?.education?.map((e: Education) => ({
-      id: e.id,
-      institution: e.institution,
-      degree: e.degree,
-      fieldOfStudy: e.fieldOfStudy,
-      startDate: e.startDate,
-      endDate: e.endDate,
-      description: e.description,
-    })) || [],
-    experience: initialData?.experience?.map((e: Experience) => ({
-      id: e.id,
-      companyName: e.companyName,
-      jobTitle: e.jobTitle,
-      location: e.location,
-      startDate: e.startDate,
-      endDate: e.endDate,
-      isCurrent: e.isCurrent,
-      description: e.description,
-    })) || [],
-  });
+  const [formData, setFormData] = useState<CandidateProfileFormData>(() =>
+    profileToFormData(initialData || {})
+  );
 
-  // Initialize media URLs from initial data
+  const applyProfile = (profile: Partial<CandidateProfile>) => {
+    setProfileId(profile.id ?? null);
+    setProfileDocumentId(profile.documentId ?? null);
+    if (profile.documentId && typeof window !== "undefined") {
+      window.localStorage.setItem(PROFILE_DOC_KEY, profile.documentId);
+    }
+    setFormData(profileToFormData(profile));
+
+    const strapiUrl = getStrapiURL();
+    if (profile.profilePicture && strapiUrl) {
+      setProfilePictureUrl(resolveImageUrl(profile.profilePicture, strapiUrl) || null);
+    }
+    if (profile.resume?.url && strapiUrl) {
+      setResumeUrl(`${strapiUrl}${profile.resume.url}`);
+    }
+  };
+
+  // Load saved profile: server initialData first, then API (+ localStorage claim)
   useEffect(() => {
-    if (initialData) {
-      const strapiUrl = getStrapiURL();
-      
-      if (initialData.profilePicture && strapiUrl) {
-        const imageUrl = resolveImageUrl(initialData.profilePicture, strapiUrl);
-        setProfilePictureUrl(imageUrl || null);
-      }
-      
-      if (initialData.resume && strapiUrl) {
-        setResumeUrl(`${strapiUrl}${initialData.resume.url}`);
-      }
-      
-      setIsLoading(false);
-    }
-  }, [initialData]);
+    let cancelled = false;
 
-  // Load existing profile - REMOVED: No longer needed
-  // Create mode (/complete): Shows empty form
-  // Edit mode (/edit): Receives initialData from server
-  useEffect(() => {
-    // If in create mode (isEditMode=false), just set loading to false
-    if (isEditMode === false) {
-      setIsLoading(false);
-      return;
-    }
-
-    // If in edit mode but no initialData, something went wrong
-    if (isEditMode && !initialData) {
-      console.error("Edit mode requires initialData");
-      setIsLoading(false);
-      return;
-    }
-
-    // This code path should never execute now, but keeping for safety
     const loadProfile = async () => {
       try {
-        const response = await fetch("/api/candidate-profiles?myProfile=true");
+        if (initialData?.fullName || initialData?.documentId) {
+          applyProfile(initialData);
+          if (!cancelled) setIsLoading(false);
+          return;
+        }
+
+        const storedDocId =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem(PROFILE_DOC_KEY)
+            : null;
+        const claimQuery = storedDocId
+          ? `&claimDocumentId=${encodeURIComponent(storedDocId)}`
+          : "";
+        const response = await fetch(
+          `/api/candidate-profiles?myProfile=true${claimQuery}`
+        );
         if (response.ok) {
           const result = await response.json();
-          if (result?.data) {
-            const profile = result.data;
-            setProfileId(profile.id);
-            setProfileDocumentId(profile.documentId || null);
-            
-            const strapiUrl = getStrapiURL();
-            
-            setFormData({
-              fullName: profile.fullName || "",
-              phone: profile.phone || "",
-              bio: profile.bio || "",
-              profilePicture: profile.profilePicture?.id || null,
-              resume: profile.resume?.id || null,
-              skills: profile.skills?.map((s: { id: number; skillName: string; level: string }) => ({
-                id: s.id,
-                skillName: s.skillName,
-                level: s.level,
-              })) || [],
-              education: profile.education?.map((e: Education) => ({
-                id: e.id,
-                institution: e.institution,
-                degree: e.degree,
-                fieldOfStudy: e.fieldOfStudy,
-                startDate: e.startDate,
-                endDate: e.endDate,
-                description: e.description,
-              })) || [],
-              experience: profile.experience?.map((e: Experience) => ({
-                id: e.id,
-                companyName: e.companyName,
-                jobTitle: e.jobTitle,
-                location: e.location,
-                startDate: e.startDate,
-                endDate: e.endDate,
-                isCurrent: e.isCurrent,
-                description: e.description,
-              })) || [],
-            });
-
-            if (profile.profilePicture && strapiUrl) {
-              const imageUrl = resolveImageUrl(profile.profilePicture, strapiUrl);
-              setProfilePictureUrl(imageUrl || null);
-            }
-            
-            if (profile.resume && strapiUrl) {
-              setResumeUrl(`${strapiUrl}${profile.resume.url}`);
-            }
+          if (result?.data && !cancelled) {
+            applyProfile(result.data);
           }
         }
       } catch (error) {
         console.error("Error loading profile:", error);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     };
 
     loadProfile();
-  }, [isEditMode, initialData]);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- load once on mount / when server data arrives
+  }, [initialData?.documentId, initialData?.id, isEditMode]);
 
   const handleFileUpload = async (file: File, type: "picture" | "resume") => {
     if (type === "picture") {
@@ -315,7 +297,7 @@ export function CandidateProfileCompletionForm({
   const addSkill = () => {
     setFormData((prev) => ({
       ...prev,
-      skills: [...prev.skills, { skillName: "", level: "Beginner" }],
+      skills: [...prev.skills, { skillName: "", level: "Intermediate" }],
     }));
   };
 
@@ -436,22 +418,29 @@ export function CandidateProfileCompletionForm({
       // ALWAYS include this array, even if empty, to sync with server
       payload.skills = formData.skills
         .map((skill) => {
-          // If skill has an ID, send just the ID (existing skill)
+          // If skill has an ID, send id + updated fields so level/name can change
           if (skill.id) {
-            return skill.id;
-          }
-          // If skill doesn't have ID, send the object (new skill - API will create it)
-          // Ensure required fields are present
-          if (skill.skillName && skill.level) {
             return {
+              id: skill.id,
               skillName: skill.skillName,
-              level: skill.level,
+              level: normalizeSkillLevel(skill.level),
             };
           }
-          // Skip invalid skills
+          if (skill.skillName && skill.level) {
+            return {
+              skillName: skill.skillName.trim(),
+              level: normalizeSkillLevel(skill.level),
+            };
+          }
           return null;
         })
-        .filter((skill): skill is number | { skillName: string; level: string } => skill !== null);
+        .filter(
+          (
+            skill
+          ): skill is
+            | { id: number; skillName: string; level: string }
+            | { skillName: string; level: string } => skill !== null
+        );
 
       // Education and experience are components - can be passed as arrays
       // Include ID if present (for updates), omit if not (for creates)
@@ -543,22 +532,19 @@ export function CandidateProfileCompletionForm({
         throw new Error(errorMessage);
       }
 
-      const profileData = (result as { data?: { data?: { id?: number; documentId?: string }; id?: number; documentId?: string } })?.data?.data || 
-                          (result as { data?: { id?: number; documentId?: string } })?.data;
+      const profileData =
+        (result as { data?: { data?: CandidateProfile; id?: number; documentId?: string } })
+          ?.data?.data ||
+        (result as { data?: CandidateProfile })?.data;
       if (profileData && typeof profileData === "object") {
-        if ("id" in profileData && profileData.id && !profileId) {
-          setProfileId(profileData.id);
-        }
-        if ("documentId" in profileData && profileData.documentId && !profileDocumentId) {
-          setProfileDocumentId(profileData.documentId);
-        }
+        applyProfile(profileData as CandidateProfile);
       }
 
       setSubmitSuccess(true);
       setTimeout(() => {
-        router.push("/dashboard");
+        router.push("/dashboard/candidate-profile");
         router.refresh();
-      }, 2000);
+      }, 1200);
     } catch (error) {
       console.error("Error saving profile:", error);
       setSubmitError(error instanceof Error ? error.message : "Failed to save profile");
@@ -576,7 +562,7 @@ export function CandidateProfileCompletionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6 pb-24">
       {submitError && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
@@ -585,17 +571,19 @@ export function CandidateProfileCompletionForm({
       )}
 
       {submitSuccess && (
-        <Alert>
-          <CheckCircle2 className="h-4 w-4" />
-          <AlertDescription>Profile saved successfully! Redirecting...</AlertDescription>
+        <Alert className="border-emerald-200 bg-emerald-50 text-emerald-900">
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <AlertDescription>Profile saved. Opening your profile…</AlertDescription>
         </Alert>
       )}
 
       {/* Basic Information */}
-      <Card>
+      <Card className="shadow-sm">
         <CardHeader>
-          <CardTitle>Basic Information</CardTitle>
-          <CardDescription>Your personal and contact information</CardDescription>
+          <CardTitle>Basic information</CardTitle>
+          <CardDescription>
+            Name, phone, and bio are enough to get started — you can add more later.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -740,7 +728,6 @@ export function CandidateProfileCompletionForm({
                     <SelectContent>
                       <SelectItem value="Beginner">Beginner</SelectItem>
                       <SelectItem value="Intermediate">Intermediate</SelectItem>
-                      <SelectItem value="Advanced">Advanced</SelectItem>
                       <SelectItem value="Expert">Expert</SelectItem>
                     </SelectContent>
                   </Select>
@@ -955,21 +942,35 @@ export function CandidateProfileCompletionForm({
         </CardContent>
       </Card>
 
-      {/* Submit Button */}
-      <div className="flex justify-end gap-4">
-        <Button type="button" variant="outline" onClick={() => router.back()}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isSaving}>
-          {isSaving ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            "Save Profile"
-          )}
-        </Button>
+      {/* Sticky save bar */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+          <p className="hidden text-sm text-muted-foreground sm:block">
+            {profileDocumentId ? "Editing saved profile" : "Creating your candidate profile"}
+          </p>
+          <div className="flex flex-1 justify-end gap-3 sm:flex-none">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.push("/dashboard/candidate-profile")}
+              disabled={isSaving}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={isSaving} className="min-w-[140px]">
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Saving…
+                </>
+              ) : profileDocumentId ? (
+                "Save changes"
+              ) : (
+                "Save profile"
+              )}
+            </Button>
+          </div>
+        </div>
       </div>
     </form>
   );

@@ -5,8 +5,8 @@ import { SessionData } from "./session";
  * Check if the user has the required role
  */
 export function hasRole(session: SessionData | null, requiredRole: UserType): boolean {
-  if (!session) return false;
-  return session.userType === requiredRole;
+  if (!session?.userType) return false;
+  return String(session.userType).toUpperCase() === requiredRole;
 }
 
 /**

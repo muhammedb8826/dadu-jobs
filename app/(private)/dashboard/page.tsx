@@ -23,6 +23,8 @@ import { getStrapiURL } from "@/lib/strapi/client"
 import { UserType } from "@/lib/types/user.types"
 import { isCandidate, isEmployer } from "@/lib/auth/rbac"
 import { resolveImageUrl } from "@/lib/strapi/media"
+import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile"
+import { getApplications, getSavedJobs } from "@/features/jobs"
 
 function getInitials(firstName: string, email: string): string {
   if (firstName) {
@@ -417,12 +419,333 @@ export default async function DashboardPage() {
     );
   }
 
-  // If user is a candidate, redirect to browse jobs page
+  // Candidate dashboard
   if (isCandidate(session)) {
-    redirect("/dashboard/browse-jobs");
+    const strapiUrl = getStrapiURL();
+    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+    let candidateProfile: {
+      fullName?: string;
+      phone?: string;
+      bio?: string;
+      profilePicture?: {
+        url: string;
+        formats?: Record<string, { url: string }>;
+        alternativeText?: string | null;
+      } | null;
+      resume?: { url: string; name: string } | null;
+      skills?: Array<{ id: number }>;
+      education?: Array<{ id: number }>;
+      experience?: Array<{ id: number }>;
+    } | null = null;
+
+    if (strapiUrl) {
+      try {
+        const populateQuery =
+          "populate[skills][fields][0]=id&populate[education][fields][0]=id&populate[experience][fields][0]=id&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=formats&populate[profilePicture][fields][3]=alternativeText&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=documentId";
+        candidateProfile = await findCandidateProfileForUser({
+          userId: session.userId,
+          userDocumentId: session.userDocumentId,
+          profileDocumentId: session.candidateProfileDocumentId,
+          authToken: session.jwt,
+          fallbackAuthToken: apiToken,
+          populateQuery,
+        });
+      } catch (error) {
+        console.error("Error fetching candidate profile:", error);
+      }
+    }
+
+    const [applications, savedJobs] = await Promise.all([
+      getApplications(Number(session.userId), session.jwt),
+      getSavedJobs(Number(session.userId), session.jwt),
+    ]);
+
+    const hasProfile = !!candidateProfile;
+    const profileCompleteness = [
+      Boolean(candidateProfile?.fullName),
+      Boolean(candidateProfile?.phone),
+      Boolean(candidateProfile?.bio),
+      Boolean(candidateProfile?.profilePicture),
+      Boolean(candidateProfile?.resume),
+      Boolean(candidateProfile?.skills?.length),
+      Boolean(candidateProfile?.education?.length),
+      Boolean(candidateProfile?.experience?.length),
+    ];
+    const completedSteps = profileCompleteness.filter(Boolean).length;
+    const completionPercent = Math.round((completedSteps / profileCompleteness.length) * 100);
+    const profilePictureUrl =
+      candidateProfile?.profilePicture && strapiUrl
+        ? resolveImageUrl(candidateProfile.profilePicture, strapiUrl)
+        : null;
+    const recentApplications = applications.slice(0, 3);
+    const pendingApplications = applications.filter(
+      (app) => app.applicationStatus === "Pending" || app.applicationStatus === "Under Review"
+    ).length;
+
+    return (
+      <div className="flex min-h-screen flex-col bg-muted/20">
+        <header className="border-b bg-background px-6 py-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-muted text-lg font-semibold text-primary/80">
+                {profilePictureUrl ? (
+                  <Image
+                    src={profilePictureUrl}
+                    alt={candidateProfile?.fullName || user.name}
+                    width={64}
+                    height={64}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span>{user.initials}</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-2xl font-semibold text-foreground">
+                  Welcome back, {candidateProfile?.fullName || user.name}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Track applications, refine your profile, and discover new roles.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href="/dashboard/browse-jobs">
+                  <Briefcase className="mr-2 h-4 w-4" />
+                  Browse Jobs
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={hasProfile ? "/dashboard/candidate-profile" : "/dashboard/candidate-profile/complete"}>
+                  <User className="mr-2 h-4 w-4" />
+                  {hasProfile ? "View Profile" : "Complete Profile"}
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex flex-1 flex-col gap-6 px-4 py-6 lg:px-8">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Applications</CardDescription>
+                <CardTitle className="text-3xl">{applications.length}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Total jobs you have applied to
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>In Progress</CardDescription>
+                <CardTitle className="text-3xl">{pendingApplications}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Applications awaiting review
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Saved Jobs</CardDescription>
+                <CardTitle className="text-3xl">{savedJobs.length}</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                Roles bookmarked for later
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Profile Strength</CardDescription>
+                <CardTitle className="text-3xl">{completionPercent}%</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {hasProfile ? "Keep your profile up to date" : "Complete your profile to apply faster"}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-3">
+            <Card className="lg:col-span-2">
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>Recent Applications</CardTitle>
+                  <CardDescription>Your latest application activity</CardDescription>
+                </div>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/dashboard/applications">View all</Link>
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {recentApplications.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-8 text-center">
+                    <p className="text-sm text-muted-foreground mb-4">
+                      You haven&apos;t applied to any jobs yet.
+                    </p>
+                    <Button asChild>
+                      <Link href="/dashboard/browse-jobs">
+                        Find jobs to apply
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {recentApplications.map((application) => (
+                      <div
+                        key={application.id}
+                        className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="space-y-1">
+                          <p className="font-medium">{application.job?.title || "Untitled role"}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {application.job?.company?.name || "Company"}
+                            {application.createdAt
+                              ? ` · Applied ${new Date(application.createdAt).toLocaleDateString()}`
+                              : ""}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(application.applicationStatus)}
+                          {application.job?.slug && (
+                            <Button asChild variant="ghost" size="sm">
+                              <Link href={`/dashboard/browse-jobs/${application.job.slug}`}>
+                                Open
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Profile Checklist</CardTitle>
+                <CardDescription>
+                  {hasProfile
+                    ? "Strengthen your candidacy with a complete profile"
+                    : "Create your candidate profile to start applying"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span>Completion</span>
+                    <span className="font-medium">{completionPercent}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all"
+                      style={{ width: `${completionPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm">
+                  <div className="flex items-center gap-2">
+                    {candidateProfile?.resume ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span>Resume uploaded</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {candidateProfile?.skills?.length ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span>Skills added</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {candidateProfile?.experience?.length ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span>Work experience</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {candidateProfile?.education?.length ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    ) : (
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span>Education history</span>
+                  </div>
+                </div>
+
+                <Button asChild className="w-full">
+                  <Link
+                    href={
+                      hasProfile
+                        ? "/dashboard/candidate-profile/edit"
+                        : "/dashboard/candidate-profile/complete"
+                    }
+                  >
+                    {hasProfile ? "Update Profile" : "Complete Profile"}
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Browse Opportunities</CardTitle>
+                <CardDescription>Discover roles that match your skills</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard/browse-jobs">
+                    <Briefcase className="mr-2 h-4 w-4" />
+                    Browse Jobs
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Saved Jobs</CardTitle>
+                <CardDescription>Revisit roles you bookmarked</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard/saved-jobs">
+                    <BookOpen className="mr-2 h-4 w-4" />
+                    Open Saved Jobs
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">My Applications</CardTitle>
+                <CardDescription>Follow up on application status</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/dashboard/applications">
+                    <FileText className="mr-2 h-4 w-4" />
+                    Track Applications
+                  </Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // For non-candidates (students/employers), show the original student dashboard
+  // Fallback for unexpected roles
   const studentProfile = await getStudentProfile(session.email, session.userId);
 
   const hasApplication = !!studentProfile;
@@ -518,7 +841,7 @@ export default async function DashboardPage() {
                     </p>
                     {!isProfileComplete ? (
                       <Button asChild>
-                        <Link href="/dashboard/profile/complete">
+                        <Link href="/dashboard/candidate-profile/complete">
                           Complete Profile First
                           <ArrowRight className="ml-2 h-4 w-4" />
                         </Link>
@@ -550,7 +873,7 @@ export default async function DashboardPage() {
                         Complete your profile first to access the application
                       </p>
                       <Button asChild variant="outline" className="w-full">
-                        <Link href="/dashboard/profile/complete">
+                        <Link href="/dashboard/candidate-profile/complete">
                           <FileText className="mr-2 h-4 w-4" />
                           Complete Profile
                         </Link>
@@ -574,7 +897,7 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <Button asChild variant="outline" className="w-full">
-                    <Link href={session.userType === UserType.CANDIDATE ? "/dashboard/candidate-profile" : "/dashboard/profile"}>
+                    <Link href="/dashboard/candidate-profile">
                       <User className="mr-2 h-4 w-4" />
                       My Profile
                     </Link>

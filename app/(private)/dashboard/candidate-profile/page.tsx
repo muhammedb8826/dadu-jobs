@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { getStrapiURL } from "@/lib/strapi/client";
 import { resolveImageUrl } from "@/lib/strapi/media";
+import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile";
 import { StrapiRichText } from "@/components/StrapiRichText";
 import type { StrapiRichTextContent } from "@/lib/strapi/rich-text";
 import { 
@@ -77,57 +78,6 @@ function formatDate(dateString: string | undefined): string {
   }
 }
 
-async function getCandidateProfile(userId: string, userJwt?: string): Promise<CandidateProfile | null> {
-  try {
-    const strapiUrl = getStrapiURL();
-    if (!strapiUrl) {
-      return null;
-    }
-
-    const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-    
-    // Build populate query for candidate profile
-    const populateQuery = "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=username&populate[user][fields][1]=email&populate[user][fields][2]=type";
-    
-    // Fetch candidate profile directly from Strapi using user's JWT token
-    // User's JWT has the correct permissions to filter by user relation
-    const userIdNum = Number(userId);
-    const response = await fetch(
-      `${strapiUrl}/api/candidate-profiles?filters[user][id][$eq]=${userIdNum}&${populateQuery}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          // Use user's JWT if available, fall back to API token
-          ...(userJwt ? { Authorization: `Bearer ${userJwt}` } : apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-        },
-        cache: "no-store",
-      }
-    );
-
-    if (!response.ok) {
-      console.error("Failed to fetch profile:", response.status, await response.text().catch(() => ''));
-      return null;
-    }
-
-    const result = await response.json();
-    
-    // Return the first profile if array, or the profile if single object
-    if (result?.data) {
-      if (Array.isArray(result.data) && result.data.length > 0) {
-        return result.data[0];
-      } else if (result.data && !Array.isArray(result.data)) {
-        return result.data;
-      }
-    }
-    
-    return null;
-  } catch (error) {
-    console.error("Error fetching candidate profile:", error);
-    return null;
-  }
-}
-
 export default async function CandidateProfilePage() {
   const session = await getSession();
 
@@ -140,7 +90,13 @@ export default async function CandidateProfilePage() {
     redirect("/dashboard");
   }
 
-  const candidate = await getCandidateProfile(session.userId, session.jwt);
+  const candidate = (await findCandidateProfileForUser({
+    userId: session.userId,
+    userDocumentId: session.userDocumentId,
+    profileDocumentId: session.candidateProfileDocumentId,
+    authToken: session.jwt,
+    fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
+  })) as CandidateProfile | null;
   const strapiUrl = getStrapiURL();
 
   if (!candidate) {
@@ -154,8 +110,8 @@ export default async function CandidateProfilePage() {
             <CardContent className="py-12 text-center">
               <p className="text-muted-foreground mb-4">You haven&apos;t created your candidate profile yet.</p>
               <Button asChild>
-                <Link href="/dashboard/candidate-profile/complete">
-                  Complete Your Profile
+                <Link href="/dashboard/candidate-profile/edit">
+                  Complete your profile
                 </Link>
               </Button>
             </CardContent>

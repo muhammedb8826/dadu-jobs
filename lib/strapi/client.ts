@@ -23,6 +23,47 @@ export function getStrapiURL(path = "") {
   return `${baseUrl}${path}`;
 }
 
+/**
+ * Fetch a Strapi URL trying auth tokens in order, then no auth.
+ * Needed because an invalid Bearer token returns 401 even when Public find works.
+ */
+export async function fetchWithAuthFallback(
+  url: string,
+  tokens: Array<string | undefined | null> = [],
+  init: Omit<RequestInit, "headers"> = {}
+): Promise<Response> {
+  const uniqueTokens = [
+    ...new Set(tokens.filter((token): token is string => Boolean(token))),
+  ];
+  // Always end with an unauthenticated attempt
+  const attempts: Array<string | undefined> = [...uniqueTokens, undefined];
+
+  let lastResponse: Response | null = null;
+
+  for (const token of attempts) {
+    const response = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+
+    lastResponse = response;
+    if (response.ok) return response;
+
+    if (response.status === 401 || response.status === 403) {
+      // Consume body so the connection can be reused, then try next auth mode
+      await response.text().catch(() => "");
+      continue;
+    }
+
+    return response;
+  }
+
+  return lastResponse!;
+}
+
 export async function strapiFetch<TResponse>(
   path: string,
   { params, headers, useApiPrefix = true, ...init }: StrapiFetchOptions = {}
@@ -74,30 +115,21 @@ export async function strapiFetch<TResponse>(
     }
     
     headerEntries["Content-Type"] = "application/json";
-    if (apiToken) {
-      headerEntries["Authorization"] = `Bearer ${apiToken}`;
-    }
 
     const fullUrl = url.toString();
     
     // Extract next option separately (Next.js specific cache option)
     const { next, ...restInit } = init;
     
-    // Build fetch options - use spread but override headers with our plain object
-    const fetchOptions: RequestInit & { next?: StrapiFetchOptions['next'] } = {
-      ...restInit,
-      headers: headerEntries,
-    };
-    
-    // Add Next.js specific next option if provided
-    if (next) {
-      fetchOptions.next = next;
-    }
-
-    const response = await fetch(fullUrl, {
-      ...fetchOptions,
-      // Ensure we're not using any problematic options that could cause transformAlgorithm errors
-    });
+    // Prefer API token, then no auth — invalid Bearer causes 401 even when Public find works
+    const response = await fetchWithAuthFallback(
+      fullUrl,
+      [headerEntries.Authorization?.replace(/^Bearer\s+/i, "") || apiToken],
+      {
+        ...restInit,
+        ...(next ? { next } : {}),
+      } as Omit<RequestInit, "headers">
+    );
 
     if (!response.ok) {
       const errorBody = await safeReadJson(response);

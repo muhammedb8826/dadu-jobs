@@ -3,10 +3,8 @@
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import {
-  IconCreditCard,
   IconDotsVertical,
   IconLogout,
-  IconNotification,
   IconUserCircle,
 } from "@tabler/icons-react"
 
@@ -33,12 +31,14 @@ import {
 
 export function NavUser({
   user,
+  accountUrl = "/dashboard",
 }: {
   user: {
     name: string
     email: string
     avatar: string
   }
+  accountUrl?: string
 }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
@@ -55,7 +55,6 @@ export function NavUser({
       })
 
       if (response.ok) {
-        // Redirect to login page
         router.push("/login")
         router.refresh()
       } else {
@@ -112,17 +111,9 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => router.push(accountUrl)}>
                 <IconUserCircle />
                 Account
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                Billing
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifications
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

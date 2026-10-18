@@ -10,6 +10,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { resolveImageUrl } from "@/lib/strapi/media";
 import { getStrapiURL } from "@/lib/strapi/client";
+import { findCandidateProfilesForUsers } from "@/lib/strapi/candidate-profile";
 import type { Application } from "@/features/jobs/types/application.types";
 
 type CandidateProfile = {
@@ -101,34 +102,23 @@ export default async function ApplicationsPage() {
   let candidateProfileByUserId = new Map<number, CandidateProfile>();
   if (isEmployerUser && strapiUrl) {
     try {
-      const userIds = Array.from(new Set(applications.map((app) => app.user?.id).filter(Boolean))) as number[];
+      const userIds = Array.from(
+        new Set(applications.map((app) => app.user?.id).filter(Boolean))
+      ) as number[];
       if (userIds.length > 0) {
-        const inQuery = userIds.join(",");
-        const profileResponse = await fetch(
-          `${strapiUrl}/api/candidate-profiles?filters[user][id][$in]=${inQuery}&populate[profilePicture]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-              ...(session.jwt
-                ? { Authorization: `Bearer ${session.jwt}` }
-                : process.env.NEXT_PUBLIC_API_TOKEN
-                  ? { Authorization: `Bearer ${process.env.NEXT_PUBLIC_API_TOKEN}` }
-                  : {}),
-            },
-            cache: "no-store",
-          }
-        );
+        const profiles = (await findCandidateProfilesForUsers({
+          userIds,
+          authToken: session.jwt,
+          fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
+          populateQuery:
+            "populate[profilePicture]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
+        })) as CandidateProfile[];
 
-        if (profileResponse.ok) {
-          const result = await profileResponse.json();
-          const profiles: CandidateProfile[] = result?.data || [];
-          candidateProfileByUserId = new Map(
-            profiles
-              .filter((profile) => profile.user?.id)
-              .map((profile) => [profile.user!.id, profile])
-          );
-        }
+        candidateProfileByUserId = new Map(
+          profiles
+            .filter((profile) => profile.user?.id)
+            .map((profile) => [profile.user!.id, profile])
+        );
       }
     } catch (error) {
       console.error("Error fetching candidate profiles:", error);

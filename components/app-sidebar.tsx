@@ -11,7 +11,6 @@ import {
   IconHelp,
   IconInnerShadowTop,
   IconSearch,
-  IconSettings,
   IconUsers,
 } from "@tabler/icons-react"
 import { UserType } from "@/lib/types/user.types"
@@ -29,7 +28,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 
-// Candidate navigation items
 const candidateNavMain = [
   {
     title: "Dashboard",
@@ -37,23 +35,27 @@ const candidateNavMain = [
     icon: IconDashboard,
   },
   {
-    title: "Saved Jobs",
-    url: "/dashboard/saved-jobs",
-    icon: IconBookmark,
-  },
-  {
-    title: "Candidate Profile",
-    url: "/dashboard/candidate-profile",
-    icon: IconFileText,
+    title: "Browse Jobs",
+    url: "/dashboard/browse-jobs",
+    icon: IconSearch,
   },
   {
     title: "Applications",
     url: "/dashboard/applications",
     icon: IconBriefcase,
   },
+  {
+    title: "Saved Jobs",
+    url: "/dashboard/saved-jobs",
+    icon: IconBookmark,
+  },
+  {
+    title: "My Profile",
+    url: "/dashboard/candidate-profile",
+    icon: IconFileText,
+  },
 ]
 
-// Employer navigation items
 const employerNavMain = [
   {
     title: "Dashboard",
@@ -89,29 +91,24 @@ const employerNavMain = [
 
 const navSecondary = [
   {
-    title: "Settings",
-    url: "/dashboard/settings",
-    icon: IconSettings,
-  },
-  {
     title: "Get Help",
-    url: "/help",
+    url: "/faq",
     icon: IconHelp,
-  },
-  {
-    title: "Search",
-    url: "#",
-    icon: IconSearch,
   },
 ]
 
-// Get navigation items based on user type
 function getNavItems(userType?: UserType) {
   if (userType === UserType.EMPLOYER) {
     return employerNavMain
   }
-  // Default to candidate navigation
   return candidateNavMain
+}
+
+function getAccountUrl(userType?: UserType) {
+  if (userType === UserType.EMPLOYER) {
+    return "/dashboard/employer-profile"
+  }
+  return "/dashboard/candidate-profile"
 }
 
 type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
@@ -124,12 +121,13 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
   userType?: UserType
 }
 
-export function AppSidebar({ 
+export function AppSidebar({
   user,
   userType,
-  ...props 
+  ...props
 }: AppSidebarProps) {
   const navItems = getNavItems(userType)
+  const accountUrl = getAccountUrl(userType)
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -153,7 +151,10 @@ export function AppSidebar({
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={user || { name: "User", email: "", avatar: "" }} />
+        <NavUser
+          user={user || { name: "User", email: "", avatar: "" }}
+          accountUrl={accountUrl}
+        />
       </SidebarFooter>
     </Sidebar>
   )
