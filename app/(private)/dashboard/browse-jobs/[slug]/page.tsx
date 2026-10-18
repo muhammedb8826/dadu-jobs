@@ -150,7 +150,16 @@ export default async function DashboardJobDetailPage({
     getSavedJobs(Number(session.userId), session.jwt),
   ]);
   const hasApplied = userApplications.some((app) => app.job?.id === job.id);
-  const isSaved = userSavedJobs.some((saved) => saved.job?.id === job.id);
+  const isSaved = userSavedJobs.some((saved) => {
+    const linked = saved.job;
+    if (!linked) return false;
+    return (
+      linked.id === job.id ||
+      (!!linked.documentId &&
+        !!job.documentId &&
+        linked.documentId === job.documentId)
+    );
+  });
 
   const isDeadlinePassed = new Date(job.deadline) < new Date();
   const companyLogoUrl = job.company ? resolveLogoUrl(job.company) : null;
@@ -270,7 +279,7 @@ export default async function DashboardJobDetailPage({
               </CardHeader>
               <CardContent className="space-y-4">
                 <ApplyButton 
-                  jobId={job.id} 
+                  jobId={job.documentId || job.id} 
                   isDeadlinePassed={isDeadlinePassed}
                   candidateResumeId={candidateResumeId}
                   hasApplied={hasApplied}
@@ -278,7 +287,7 @@ export default async function DashboardJobDetailPage({
                   experience={candidateExperience}
                 />
                 
-                <SaveButton jobId={job.id} variant="button" initialSaved={isSaved} />
+                <SaveButton jobId={job.documentId || job.id} variant="button" initialSaved={isSaved} />
               </CardContent>
             </Card>
 

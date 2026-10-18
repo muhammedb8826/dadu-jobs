@@ -24,14 +24,18 @@ interface CandidateJobsClientProps {
   initialJobs: Job[];
   categories: Category[];
   appliedJobIds: number[];
-  savedJobIds: number[];
+  /** Numeric id and/or documentId strings */
+  savedJobIds: Array<number | string>;
 }
 
 export function CandidateJobsClient({ initialJobs, appliedJobIds, savedJobIds }: CandidateJobsClientProps) {
   // Create a Set for fast lookup of applied jobs
   const appliedJobsSet = useMemo(() => new Set(appliedJobIds), [appliedJobIds]);
-  // Create a Set for fast lookup of saved jobs
-  const savedJobsSet = useMemo(() => new Set(savedJobIds), [savedJobIds]);
+  // Create a Set for fast lookup of saved jobs (id + documentId)
+  const savedJobsSet = useMemo(
+    () => new Set(savedJobIds.map((id) => String(id))),
+    [savedJobIds]
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [location, setLocation] = useState("");
   const [activeSearchTerm, setActiveSearchTerm] = useState("");
@@ -404,7 +408,10 @@ export function CandidateJobsClient({ initialJobs, appliedJobIds, savedJobIds }:
                       job={job} 
                       viewMode={viewMode}
                       isApplied={appliedJobsSet.has(job.id)}
-                      isSaved={savedJobsSet.has(job.id)}
+                      isSaved={
+                        savedJobsSet.has(String(job.id)) ||
+                        (!!job.documentId && savedJobsSet.has(String(job.documentId)))
+                      }
                     />
                   ))}
                 </div>

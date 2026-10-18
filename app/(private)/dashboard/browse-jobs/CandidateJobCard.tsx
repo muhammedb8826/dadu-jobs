@@ -115,7 +115,7 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
                     )}
                     {!isApplied && (
                       <div className="sm:hidden">
-                        <SaveButton jobId={job.id} initialSaved={isSaved} />
+                        <SaveButton jobId={job.documentId || job.id} initialSaved={isSaved} />
                       </div>
                     )}
                   </div>
@@ -155,7 +155,7 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
                   )}
                   {!isApplied && (
                     <div className="hidden sm:block">
-                      <SaveButton jobId={job.id} initialSaved={isSaved} />
+                      <SaveButton jobId={job.documentId || job.id} initialSaved={isSaved} />
                     </div>
                   )}
                 </div>
@@ -204,7 +204,7 @@ export function CandidateJobCard({ job, viewMode, isApplied = false, isSaved = f
               Applied
             </Badge>
           ) : (
-            <SaveButton jobId={job.id} initialSaved={isSaved} />
+            <SaveButton jobId={job.documentId || job.id} initialSaved={isSaved} />
           )}
         </div>
 

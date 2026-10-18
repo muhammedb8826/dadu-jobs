@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface SaveButtonProps {
-  jobId: number;
+  jobId: number | string;
   initialSaved?: boolean;
   onSaveChange?: (saved: boolean) => void;
   variant?: "icon" | "button";
@@ -51,9 +51,19 @@ export function SaveButton({ jobId, initialSaved = false, onSaveChange, variant 
           onSaveChange?.(true);
         } else {
           const error = await response.json().catch(() => ({}));
-          console.error("Failed to save job. Status:", response.status);
-          console.error("Error response:", error);
-          console.error("Job ID:", jobId);
+          // Treat "already saved" from older API as success
+          if (
+            response.status === 400 &&
+            typeof error?.error === "string" &&
+            error.error.toLowerCase().includes("already saved")
+          ) {
+            setIsSaved(true);
+            onSaveChange?.(true);
+          } else {
+            console.error("Failed to save job. Status:", response.status);
+            console.error("Error response:", error);
+            console.error("Job ID:", jobId);
+          }
         }
       }
     } catch (error) {

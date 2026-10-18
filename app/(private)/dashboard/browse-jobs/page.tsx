@@ -38,16 +38,18 @@ export default async function BrowseJobsPage() {
     getAppliedJobIds(Number(session.userId), session.jwt),
     getSavedJobs(Number(session.userId), session.jwt),
   ]);
-  const savedJobIds = new Set<number>(
-    savedJobs.map((saved) => saved.job?.id).filter((id): id is number => Boolean(id))
-  );
+  const savedJobKeys = new Set<string>();
+  for (const saved of savedJobs) {
+    if (saved.job?.id != null) savedJobKeys.add(String(saved.job.id));
+    if (saved.job?.documentId) savedJobKeys.add(String(saved.job.documentId));
+  }
 
   return (
     <CandidateJobsClient 
       initialJobs={jobs} 
       categories={categories} 
       appliedJobIds={Array.from(appliedJobIds)}
-      savedJobIds={Array.from(savedJobIds)}
+      savedJobIds={Array.from(savedJobKeys)}
     />
   );
 }
