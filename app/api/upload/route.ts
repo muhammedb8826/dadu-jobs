@@ -90,22 +90,29 @@ export async function POST(request: NextRequest) {
     let result: unknown = {};
 
     for (const authToken of tokens) {
-      ({ response, result } = await uploadToStrapi(
-        strapiUrl,
-        createFormData(),
-        authToken
-      ));
+      // One retry: Windows + Strapi sharp can hit EBUSY on temp cleanup
+      for (let attempt = 0; attempt < 2; attempt++) {
+        ({ response, result } = await uploadToStrapi(
+          strapiUrl,
+          createFormData(),
+          authToken
+        ));
 
-      if (response.ok) {
+        if (response.ok) break;
+        if (response.status !== 500 || attempt === 1) break;
+        await new Promise((r) => setTimeout(r, 350));
+      }
+
+      if (response?.ok) {
         break;
       }
 
       console.warn("Upload attempt failed:", {
-        status: response.status,
+        status: response?.status,
         usingUserJwt: authToken === userJwt,
       });
 
-      if (response.status !== 401 && response.status !== 403) {
+      if (response && response.status !== 401 && response.status !== 403) {
         break;
       }
     }
