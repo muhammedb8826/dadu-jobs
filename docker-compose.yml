@@ -5,19 +5,17 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://jobs-api.bluemoongt.com}
-        NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN}
+        NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-}
     container_name: jobs-frontend
     restart: always
     ports:
       - "3015:3015"
-    env_file:
-      - .env
     environment:
-      - NODE_ENV=production
-      - PORT=3015
-      - HOSTNAME=0.0.0.0
-      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-https://jobs-api.bluemoongt.com}
-      - NEXT_PUBLIC_API_TOKEN=${NEXT_PUBLIC_API_TOKEN}
+      NODE_ENV: production
+      PORT: 3015
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-https://jobs-api.bluemoongt.com}
+      NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-}
     networks:
       - jobs-net
 

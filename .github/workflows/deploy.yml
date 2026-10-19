@@ -11,12 +11,16 @@ jobs:
     steps:
       - name: Deploy to VPS via SSH
         uses: appleboy/ssh-action@v1.2.2
+        env:
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          NEXT_PUBLIC_API_TOKEN: ${{ secrets.NEXT_PUBLIC_API_TOKEN }}
         with:
           host: ${{ secrets.HOST }}
           username: ${{ secrets.USERNAME }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: 2222
           command_timeout: 30m
+          envs: NEXT_PUBLIC_API_BASE_URL,NEXT_PUBLIC_API_TOKEN
           script: |
             set -euo pipefail
 
@@ -26,6 +30,18 @@ jobs:
             echo "==> Pulling latest code"
             git fetch origin main
             git reset --hard origin/main
+
+            echo "==> Writing .env"
+            API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-https://jobs-api.bluemoongt.com}"
+            API_TOKEN="${NEXT_PUBLIC_API_TOKEN:-}"
+            printf '%s\n' \
+              "NEXT_PUBLIC_API_BASE_URL=${API_BASE_URL}" \
+              "NEXT_PUBLIC_API_TOKEN=${API_TOKEN}" \
+              > .env
+
+            if [ -z "${API_TOKEN}" ]; then
+              echo "WARNING: NEXT_PUBLIC_API_TOKEN is empty. Add it as a GitHub Actions secret."
+            fi
 
             echo "==> Ensuring docker network"
             docker network inspect jobs-shared-network >/dev/null 2>&1 || \
