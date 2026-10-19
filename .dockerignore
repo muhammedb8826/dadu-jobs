@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.github
+.env*
+!.env.example
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+README.md
+LICENSE
+*.md
+.DS_Store
+tsconfig.tsbuildinfo

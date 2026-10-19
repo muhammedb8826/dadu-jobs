@@ -1,4 +1,4 @@
-name: Deploy Next.js App to cPanel via FTP
+name: Deploy Jobs Frontend
 
 on:
   push:
@@ -6,45 +6,26 @@ on:
       - main
 
 jobs:
-  web-deploy:
+  deploy:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: 20
+      - name: Deploy to VPS via SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USERNAME }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /var/www/dadu-jobs
 
-    - name: Install dependencies
-      run: npm install
+            git pull origin main
 
-    - name: Create env file for build
-      run: |
-        rm -f .env.production
-        {
-          echo "NEXT_PUBLIC_API_BASE_URL=https://jobs-api.bluemoongt.com";
-          echo "NEXT_PUBLIC_API_TOKEN=${{ secrets.NEXT_PUBLIC_API_TOKEN }}";
-        } >> .env.production
+            docker network inspect jobs-shared-network >/dev/null 2>&1 || \
+              docker network create jobs-shared-network
 
-    - name: Build Next.js app
-      run: npm run build
-
-    - name: Deploy to cPanel via FTP
-      uses: SamKirkland/FTP-Deploy-Action@v4.3.5
-      with:
-        server: ${{ secrets.FTP_SERVER }} 
-        username: ${{ secrets.FTP_USERNAME }}
-        password: ${{ secrets.FTP_PASSWORD }}
-        server-dir: ${{ secrets.CPANEL_DIR }}
-        local-dir: ./
-        protocol: ftp
-        exclude: |
-         .git/**
-         .github/**
-          node_modules/**
-         .next/cache/**
-         .env.production
-      # Optionally add any other files you don't need on the remote server
+            docker compose up -d --build
+            docker image prune -f

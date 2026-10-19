@@ -1,0 +1,47 @@
+# Place on VPS as /etc/nginx/sites-available/dadu-jobs
+# Then: ln -s /etc/nginx/sites-available/dadu-jobs /etc/nginx/sites-enabled/
+# After DNS points here, run certbot for both domains.
+
+upstream jobs_frontend {
+    server 127.0.0.1:3015;
+}
+
+upstream jobs_api {
+    server 127.0.0.1:3016;
+}
+
+server {
+    listen 80;
+    server_name jobs.bluemoongt.com;
+
+    client_max_body_size 50M;
+
+    location / {
+        proxy_pass http://jobs_frontend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+server {
+    listen 80;
+    server_name jobs-api.bluemoongt.com;
+
+    client_max_body_size 100M;
+
+    location / {
+        proxy_pass http://jobs_api;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
