@@ -111,7 +111,7 @@ export default async function ApplicationsPage() {
           authToken: session.jwt,
           fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
           populateQuery:
-            "populate[profilePicture]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
+            "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=formats&populate[profilePicture][fields][3]=alternativeText&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
         })) as CandidateProfile[];
 
         candidateProfileByUserId = new Map(

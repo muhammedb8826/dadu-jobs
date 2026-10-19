@@ -17,8 +17,12 @@ export type CandidateProfileRecord = {
   [key: string]: unknown;
 };
 
+/** Media: never use populate[profilePicture]=* — Strapi rejects nested `related`. */
+export const CANDIDATE_MEDIA_POPULATE =
+  "populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size";
+
 const DEFAULT_POPULATE =
-  "populate[skills][fields][0]=id&populate[skills][fields][1]=documentId&populate[skills][fields][2]=skillName&populate[skills][fields][3]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=name&populate[profilePicture][fields][2]=url&populate[profilePicture][fields][3]=alternativeText&populate[profilePicture][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=name&populate[resume][fields][2]=url&populate[resume][fields][3]=mime&populate[resume][fields][4]=size&populate[user][fields][0]=id&populate[user][fields][1]=documentId&populate[user][fields][2]=username&populate[user][fields][3]=email&populate[user][fields][4]=type";
+  `populate[skills][fields][0]=id&populate[skills][fields][1]=documentId&populate[skills][fields][2]=skillName&populate[skills][fields][3]=level&populate[education]=*&populate[experience]=*&${CANDIDATE_MEDIA_POPULATE}&populate[user][fields][0]=id&populate[user][fields][1]=documentId&populate[user][fields][2]=username&populate[user][fields][3]=email&populate[user][fields][4]=type`;
 
 function authTokens(options: {
   authToken?: string | null;

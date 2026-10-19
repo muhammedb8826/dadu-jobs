@@ -25,7 +25,7 @@ import { isCandidate, isEmployer } from "@/lib/auth/rbac"
 import { resolveImageUrl } from "@/lib/strapi/media"
 import { findCandidateProfileForUser } from "@/lib/strapi/candidate-profile"
 import { findEmployerProfileForUser } from "@/lib/strapi/employer-profile"
-import { getApplications, getSavedJobs } from "@/features/jobs"
+import { getApplications, getEmployerApplications, getJobs, getSavedJobs } from "@/features/jobs"
 
 function getInitials(firstName: string, email: string): string {
   if (firstName) {
@@ -171,7 +171,6 @@ export default async function DashboardPage() {
 
   // If user is an employer, show employer dashboard
   if (isEmployer(session)) {
-    // Fetch employer profile using the same populate query as the API route
     const strapiUrl = getStrapiURL();
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     let employerProfile = null;
@@ -195,195 +194,304 @@ export default async function DashboardPage() {
       }
     }
 
+    const [jobs, applications] = await Promise.all([
+      getJobs(Number(session.userId), session.jwt),
+      getEmployerApplications(Number(session.userId), session.jwt),
+    ]);
+
+    const activeJobs = jobs.filter((job) => job.isActive !== false);
+    const pendingApproval = jobs.filter(
+      (job) => job.approvalStatus === "Pending" || job.approvalStatus === "Needs Modification"
+    );
+    const newApplications = applications.filter(
+      (app) =>
+        app.applicationStatus === "Applied" ||
+        app.applicationStatus === "Pending" ||
+        app.applicationStatus === "Under Review"
+    );
+    const recentApplications = applications.slice(0, 5);
+    const recentJobs = jobs.slice(0, 4);
+
     const profilePictureUrl = employerProfile?.profilePicture && strapiUrl
       ? resolveImageUrl(employerProfile.profilePicture, strapiUrl)
       : null;
+    const companyName =
+      employerProfile?.company && typeof employerProfile.company === "object"
+        ? (employerProfile.company as { name?: string }).name
+        : undefined;
+    const displayName =
+      typeof employerProfile?.fullName === "string" && employerProfile.fullName
+        ? employerProfile.fullName
+        : user.name;
+    const employerJobTitle =
+      typeof employerProfile?.jobTitle === "string" ? employerProfile.jobTitle : "";
+    const setupComplete = hasProfile && hasCompany;
 
     return (
       <div className="flex min-h-screen flex-col bg-muted/20">
-        {/* Profile header */}
-        <header className="flex items-center gap-4 border-b bg-background px-6 py-4">
-          <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-muted text-lg font-semibold text-primary/80">
-            {profilePictureUrl ? (
-              <Image
-                src={profilePictureUrl}
-                alt={user.name}
-                width={64}
-                height={64}
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <span>{user.initials}</span>
-            )}
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-xl font-semibold text-foreground">
-              Welcome back, {employerProfile?.fullName || user.name}!
-            </h1>
-            <p className="text-sm text-muted-foreground">{user.email}</p>
+        <header className="border-b bg-background px-6 py-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-lg font-semibold text-primary/80">
+                {profilePictureUrl ? (
+                  <Image
+                    src={profilePictureUrl}
+                    alt={displayName}
+                    width={64}
+                    height={64}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span>{user.initials}</span>
+                )}
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+                  {displayName}
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  {[employerJobTitle, companyName || (hasCompany ? "Company linked" : null)]
+                    .filter(Boolean)
+                    .join(" · ") || user.email}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild>
+                <Link href="/dashboard/jobs/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Post a job
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/dashboard/applications">
+                  <FileText className="mr-2 h-4 w-4" />
+                  Review applications
+                </Link>
+              </Button>
+            </div>
           </div>
         </header>
 
-        {/* Main content */}
         <div className="flex flex-1 flex-col gap-6 px-4 py-6 lg:px-8">
-          {/* Profile Status Card */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Employer Profile</CardTitle>
-                  <CardDescription>
-                    {hasProfile 
-                      ? "Manage your profile and company information"
-                      : "Complete your employer profile to start posting jobs"}
-                  </CardDescription>
-                </div>
-                {hasProfile && (
-                  <Badge className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
-                    <CheckCircle2 className="mr-1 h-3 w-3" />
-                    Profile Created
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
-              {hasProfile ? (
-                <div className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Full Name</p>
-                      <p className="text-sm font-medium">
-                        {employerProfile.fullName || "Not provided"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Job Title</p>
-                      <p className="text-sm font-medium">
-                        {employerProfile.jobTitle || "Not provided"}
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Company</p>
-                      <p className="text-sm font-medium">
-                        {hasCompany ? (
-                          <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400">
-                            <CheckCircle2 className="mr-1 h-3 w-3" />
-                            {employerProfile.company?.name || "Linked"}
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline">Not linked</Badge>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button asChild>
-                      <Link href="/dashboard/employer-profile/edit">
-                        <User className="mr-2 h-4 w-4" />
-                        Edit Profile
-                      </Link>
-                    </Button>
-                    {hasCompany ? (
-                      <Button asChild variant="outline">
-                        <Link href="/dashboard/company/edit">
-                          <Briefcase className="mr-2 h-4 w-4" />
-                          Edit Company
-                        </Link>
-                      </Button>
-                    ) : (
-                      <Button asChild variant="outline">
-                        <Link href="/dashboard/employer-profile/complete">
-                          <Briefcase className="mr-2 h-4 w-4" />
-                          Create Company
-                        </Link>
-                      </Button>
-                    )}
-                    <Button asChild variant="outline">
-                      <Link href="/dashboard/employer-profile">
-                        <FileText className="mr-2 h-4 w-4" />
-                        View Full Profile
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">
-                    You haven&apos;t created your employer profile yet. Create your profile and company information to start posting jobs.
+          {!setupComplete && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">
+                    Finish setting up your hiring account
                   </p>
-                  <div className="flex gap-2">
-                    <Button asChild>
-                      <Link href="/dashboard/employer-profile/complete">
-                        <User className="mr-2 h-4 w-4" />
-                        Create Profile
-                      </Link>
-                    </Button>
-                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {!hasProfile
+                      ? "Create your employer profile to post jobs and review candidates."
+                      : "Link a company so candidates can see who is hiring."}
+                  </p>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Quick Actions */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Profile</CardTitle>
-                <CardDescription>Manage your employer profile</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={hasProfile ? "/dashboard/employer-profile/edit" : "/dashboard/employer-profile/complete"}>
-                    <User className="mr-2 h-4 w-4" />
-                    {hasProfile ? "Edit Profile" : "Create Profile"}
+                <Button asChild size="sm">
+                  <Link href="/dashboard/employer-profile/complete">
+                    {!hasProfile ? "Create profile" : "Add company"}
                   </Link>
                 </Button>
-                {hasProfile && (
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/employer-profile">
-                      <FileText className="mr-2 h-4 w-4" />
-                      View Full Profile
-                    </Link>
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
+          )}
 
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Company</CardTitle>
-                <CardDescription>Manage your company information</CardDescription>
+              <CardHeader className="pb-2">
+                <CardDescription>Active jobs</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">{activeJobs.length}</CardTitle>
               </CardHeader>
               <CardContent>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href={hasCompany ? "/dashboard/company/edit" : "/dashboard/employer-profile/complete"}>
-                    <Briefcase className="mr-2 h-4 w-4" />
-                    {hasCompany ? "Edit Company" : "Create Company"}
-                  </Link>
+                <Link
+                  href="/dashboard/jobs"
+                  className="inline-flex items-center text-sm text-primary hover:underline"
+                >
+                  Manage postings
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Total applications</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">{applications.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Link
+                  href="/dashboard/applications"
+                  className="inline-flex items-center text-sm text-primary hover:underline"
+                >
+                  View inbox
+                  <ArrowRight className="ml-1 h-3.5 w-3.5" />
+                </Link>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Needs review</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">{newApplications.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Applied or under review
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="pb-2">
+                <CardDescription>Pending approval</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">{pendingApproval.length}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Job posts awaiting admin review
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-6 xl:grid-cols-5">
+            <Card className="xl:col-span-3">
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Recent applications</CardTitle>
+                  <CardDescription>
+                    Latest candidates who applied to your jobs
+                  </CardDescription>
+                </div>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/dashboard/applications">View all</Link>
                 </Button>
+              </CardHeader>
+              <CardContent>
+                {recentApplications.length === 0 ? (
+                  <div className="rounded-md border border-dashed px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-foreground">No applications yet</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Post a job to start receiving candidates.
+                    </p>
+                    <Button asChild className="mt-4" size="sm">
+                      <Link href="/dashboard/jobs/new">Post a job</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <ul className="divide-y">
+                    {recentApplications.map((app) => (
+                      <li
+                        key={app.documentId || app.id}
+                        className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:justify-between"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <p className="truncate text-sm font-medium text-foreground">
+                            {app.user?.username || app.user?.email || "Candidate"}
+                          </p>
+                          <p className="truncate text-sm text-muted-foreground">
+                            {app.job?.title || "Untitled role"}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(app.applicationStatus || app.decision || "Applied")}
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/dashboard/applications/${app.documentId || app.id}/evaluation`}>
+                              Review
+                            </Link>
+                          </Button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Job Postings</CardTitle>
-                <CardDescription>Manage your job postings</CardDescription>
+            <Card className="xl:col-span-2">
+              <CardHeader className="flex flex-row items-start justify-between gap-4">
+                <div>
+                  <CardTitle>Your jobs</CardTitle>
+                  <CardDescription>Recent postings</CardDescription>
+                </div>
+                <Button asChild variant="ghost" size="sm">
+                  <Link href="/dashboard/jobs">Manage</Link>
+                </Button>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <Button asChild variant="outline" className="w-full">
-                  <Link href="/dashboard/jobs">
-                    <Briefcase className="mr-2 h-4 w-4" />
-                    View Jobs
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="w-full">
-                  <Link href="/dashboard/jobs/new">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Post New Job
-                  </Link>
-                </Button>
+              <CardContent>
+                {recentJobs.length === 0 ? (
+                  <div className="rounded-md border border-dashed px-4 py-10 text-center">
+                    <p className="text-sm font-medium text-foreground">No jobs posted</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Create your first listing to attract talent.
+                    </p>
+                  </div>
+                ) : (
+                  <ul className="space-y-3">
+                    {recentJobs.map((job) => (
+                      <li key={job.documentId || job.id}>
+                        <Link
+                          href={`/dashboard/jobs/${job.documentId || job.id}/applications`}
+                          className="block rounded-md border px-3 py-3 transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-medium text-foreground">
+                              {job.title}
+                            </p>
+                            {getStatusBadge(job.approvalStatus || (job.isActive ? "Approved" : "Pending"))}
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {[job.location, job.jobType].filter(Boolean).join(" · ") || "Open role"}
+                          </p>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </CardContent>
             </Card>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
+              <Link href={hasProfile ? "/dashboard/employer-profile" : "/dashboard/employer-profile/complete"}>
+                <User className="mr-3 h-4 w-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block text-sm font-medium">Employer profile</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {hasProfile ? "View and edit" : "Set up now"}
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
+              <Link href={hasCompany ? "/dashboard/company/edit" : "/dashboard/employer-profile/complete"}>
+                <Briefcase className="mr-3 h-4 w-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block text-sm font-medium">Company</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {hasCompany ? companyName || "Edit details" : "Add company"}
+                  </span>
+                </span>
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
+              <Link href="/dashboard/candidates">
+                <BookOpen className="mr-3 h-4 w-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block text-sm font-medium">Candidates</span>
+                  <span className="block text-xs text-muted-foreground">Browse talent</span>
+                </span>
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="h-auto justify-start px-4 py-3">
+              <Link href="/dashboard/jobs">
+                <Calendar className="mr-3 h-4 w-4 shrink-0" />
+                <span className="text-left">
+                  <span className="block text-sm font-medium">All job posts</span>
+                  <span className="block text-xs text-muted-foreground">
+                    {jobs.length} total
+                  </span>
+                </span>
+              </Link>
+            </Button>
           </div>
         </div>
       </div>
@@ -394,7 +502,7 @@ export default async function DashboardPage() {
   if (isCandidate(session)) {
     const strapiUrl = getStrapiURL();
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-    let candidateProfile: {
+    type CandidateDashProfile = {
       fullName?: string;
       phone?: string;
       bio?: string;
@@ -407,20 +515,21 @@ export default async function DashboardPage() {
       skills?: Array<{ id: number }>;
       education?: Array<{ id: number }>;
       experience?: Array<{ id: number }>;
-    } | null = null;
+    };
+    let candidateProfile: CandidateDashProfile | null = null;
 
     if (strapiUrl) {
       try {
         const populateQuery =
           "populate[skills][fields][0]=id&populate[education][fields][0]=id&populate[experience][fields][0]=id&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=formats&populate[profilePicture][fields][3]=alternativeText&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=documentId";
-        candidateProfile = await findCandidateProfileForUser({
+        candidateProfile = (await findCandidateProfileForUser({
           userId: session.userId,
           userDocumentId: session.userDocumentId,
           profileDocumentId: session.candidateProfileDocumentId,
           authToken: session.jwt,
           fallbackAuthToken: apiToken,
           populateQuery,
-        });
+        })) as CandidateDashProfile | null;
       } catch (error) {
         console.error("Error fetching candidate profile:", error);
       }

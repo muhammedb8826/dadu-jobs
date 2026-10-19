@@ -37,15 +37,38 @@ export default async function EmployerProfilePage() {
     fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
   });
   const strapiUrl = getStrapiURL();
-  const profilePictureUrl = employerProfile?.profilePicture && strapiUrl
-    ? resolveImageUrl(employerProfile.profilePicture, strapiUrl)
-    : null;
-  const companyLogoUrl = employerProfile?.company?.logo?.[0] && strapiUrl
-    ? resolveImageUrl(employerProfile.company.logo[0], strapiUrl)
-    : null;
+  const asText = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value : "";
+
+  const company =
+    employerProfile?.company && typeof employerProfile.company === "object"
+      ? (employerProfile.company as {
+          name?: string;
+          tagline?: string;
+          logo?: unknown[];
+          website?: string;
+          location?: string;
+          industry?: string;
+          companySize?: string;
+          description?: unknown;
+          socialLinks?: Array<{ id?: number; label: string; url: string }>;
+        })
+      : null;
+  const fullName = asText(employerProfile?.fullName);
+  const jobTitle = asText(employerProfile?.jobTitle);
+  const phone = asText(employerProfile?.phone);
+  const bio = asText(employerProfile?.bio);
+  const profilePictureUrl =
+    employerProfile?.profilePicture && strapiUrl
+      ? resolveImageUrl(employerProfile.profilePicture, strapiUrl) || null
+      : null;
+  const companyLogoUrl =
+    company?.logo?.[0] && strapiUrl
+      ? resolveImageUrl(company.logo[0], strapiUrl) || null
+      : null;
 
   const hasProfile = !!employerProfile;
-  const hasCompany = !!employerProfile?.company;
+  const hasCompany = !!company;
 
   if (!hasProfile) {
     return (
@@ -128,7 +151,7 @@ export default async function EmployerProfilePage() {
                 <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-full border">
                   <Image
                     src={profilePictureUrl}
-                    alt={employerProfile.fullName || "Profile"}
+                    alt={fullName || "Profile"}
                     fill
                     className="object-cover"
                   />
@@ -138,22 +161,22 @@ export default async function EmployerProfilePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Full Name</p>
-                    <p className="text-sm">{employerProfile.fullName || "Not provided"}</p>
+                    <p className="text-sm">{fullName || "Not provided"}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Job Title</p>
-                    <p className="text-sm">{employerProfile.jobTitle || "Not provided"}</p>
+                    <p className="text-sm">{jobTitle || "Not provided"}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Phone</p>
-                    <p className="text-sm">{employerProfile.phone || "Not provided"}</p>
+                    <p className="text-sm">{phone || "Not provided"}</p>
                   </div>
                 </div>
-                {employerProfile.bio && (
+                {bio && (
                   <div className="space-y-1">
                     <p className="text-sm font-medium text-muted-foreground">Bio</p>
                     <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                      {employerProfile.bio}
+                      {bio}
                     </p>
                   </div>
                 )}
@@ -175,7 +198,7 @@ export default async function EmployerProfilePage() {
                   <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded border">
                     <Image
                       src={companyLogoUrl}
-                      alt={employerProfile.company.name || "Company Logo"}
+                      alt={company?.name || "Company Logo"}
                       fill
                       className="object-cover"
                     />
@@ -183,72 +206,72 @@ export default async function EmployerProfilePage() {
                 )}
                 <div className="flex-1 space-y-4">
                   <div>
-                    <h3 className="text-lg font-semibold">{employerProfile.company.name}</h3>
-                    {employerProfile.company.tagline && (
+                    <h3 className="text-lg font-semibold">{company?.name}</h3>
+                    {company?.tagline && (
                       <p className="text-sm text-muted-foreground mt-1">
-                        {employerProfile.company.tagline}
+                        {company.tagline}
                       </p>
                     )}
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
-                    {employerProfile.company.website && (
+                    {company?.website && (
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                           <Globe className="h-4 w-4" />
                           Website
                         </p>
                         <a
-                          href={employerProfile.company.website}
+                          href={company.website}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-sm text-primary hover:underline"
                         >
-                          {employerProfile.company.website}
+                          {company.website}
                         </a>
                       </div>
                     )}
-                    {employerProfile.company.location && (
+                    {company?.location && (
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                           <MapPin className="h-4 w-4" />
                           Location
                         </p>
-                        <p className="text-sm">{employerProfile.company.location}</p>
+                        <p className="text-sm">{company.location}</p>
                       </div>
                     )}
-                    {employerProfile.company.industry && (
+                    {company?.industry && (
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                           <Briefcase className="h-4 w-4" />
                           Industry
                         </p>
-                        <p className="text-sm">{employerProfile.company.industry}</p>
+                        <p className="text-sm">{company.industry}</p>
                       </div>
                     )}
-                    {employerProfile.company.companySize && (
+                    {company?.companySize && (
                       <div className="space-y-1">
                         <p className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                           <Building2 className="h-4 w-4" />
                           Company Size
                         </p>
-                        <p className="text-sm">{employerProfile.company.companySize}</p>
+                        <p className="text-sm">{company.companySize}</p>
                       </div>
                     )}
                   </div>
-                  {employerProfile.company.description && (
+                  {company?.description != null && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Description</p>
                       <StrapiRichText
-                        content={employerProfile.company.description}
+                        content={company.description as string | null}
                         className="text-sm text-muted-foreground max-w-none"
                       />
                     </div>
                   )}
-                  {employerProfile.company.socialLinks && employerProfile.company.socialLinks.length > 0 && (
+                  {company?.socialLinks && company.socialLinks.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-muted-foreground">Social Links</p>
                       <div className="flex flex-wrap gap-2">
-                        {employerProfile.company.socialLinks.map((link: { id?: number; label: string; url: string }, index: number) => (
+                        {company.socialLinks.map((link, index) => (
                           <a
                             key={link.id || index}
                             href={link.url}

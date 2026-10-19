@@ -56,7 +56,7 @@ async function getCandidates(userIds: number[], sessionJwt?: string): Promise<Ca
       authToken: sessionJwt,
       fallbackAuthToken: process.env.NEXT_PUBLIC_API_TOKEN,
       populateQuery:
-        "populate[skills]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
+        "populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=formats&populate[profilePicture][fields][3]=alternativeText&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=email&populate[user][fields][2]=username",
     });
 
     return profiles as CandidateProfile[];

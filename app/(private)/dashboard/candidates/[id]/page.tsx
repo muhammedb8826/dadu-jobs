@@ -87,7 +87,7 @@ async function getCandidateProfile(id: string): Promise<CandidateProfile | null>
 
     // Try documentId first, then fall back to numeric ID
     const response = await fetch(
-      `${strapiUrl}/api/candidate-profiles/${id}?populate[skills]=*&populate[education]=*&populate[experience]=*&populate[profilePicture]=*&populate[resume]=*&populate[user][fields][0]=email&populate[user][fields][1]=username`,
+      `${strapiUrl}/api/candidate-profiles/${id}?populate[skills][fields][0]=id&populate[skills][fields][1]=skillName&populate[skills][fields][2]=level&populate[education]=*&populate[experience]=*&populate[profilePicture][fields][0]=id&populate[profilePicture][fields][1]=url&populate[profilePicture][fields][2]=formats&populate[profilePicture][fields][3]=alternativeText&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[resume][fields][3]=mime&populate[user][fields][0]=email&populate[user][fields][1]=username`,
       {
         method: "GET",
         headers: {
