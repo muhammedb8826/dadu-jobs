@@ -1,8 +1,131 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getStrapiURL } from "@/lib/strapi/client";
+import { fetchWithAuthFallback, getStrapiURL } from "@/lib/strapi/client";
 import { getSession } from "@/lib/auth/session";
 import { isCandidate } from "@/lib/auth/rbac";
 import { APPLICATION_STATUSES } from "@/features/jobs";
+
+function jobMatches(job: unknown, jobKey: string): boolean {
+  if (job == null) return false;
+  if (typeof job === "number" || typeof job === "string") {
+    return String(job) === jobKey;
+  }
+  if (typeof job === "object") {
+    const j = job as { id?: unknown; documentId?: unknown };
+    return (
+      (j.documentId != null && String(j.documentId) === jobKey) ||
+      (j.id != null && String(j.id) === jobKey)
+    );
+  }
+  return false;
+}
+
+async function resolveJobDocumentId(
+  jobKey: string | number,
+  tokens: Array<string | undefined>
+): Promise<string | null> {
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) return null;
+
+  const key = String(jobKey);
+
+  // Prefer direct documentId lookup (UI often sends documentId)
+  const byDocument = await fetchWithAuthFallback(
+    `${strapiUrl}/api/jobs/${encodeURIComponent(key)}?fields[0]=documentId&fields[1]=id`,
+    tokens,
+    { cache: "no-store" }
+  );
+  if (byDocument.ok) {
+    const result = await byDocument.json().catch(() => ({}));
+    if (result?.data?.documentId) return String(result.data.documentId);
+  }
+
+  if (/^\d+$/.test(key)) {
+    const byId = await fetchWithAuthFallback(
+      `${strapiUrl}/api/jobs?filters[id][$eq]=${key}&fields[0]=documentId&fields[1]=id&pagination[limit]=1`,
+      tokens,
+      { cache: "no-store" }
+    );
+    if (byId.ok) {
+      const result = await byId.json().catch(() => ({}));
+      const row = Array.isArray(result?.data) ? result.data[0] : result?.data;
+      if (row?.documentId) return String(row.documentId);
+    }
+  }
+
+  return null;
+}
+
+type AppRow = {
+  documentId?: string;
+  job?: { id?: number; documentId?: string } | null;
+  user?: { id?: number | string } | number | string | null;
+};
+
+function linkedUserId(user: unknown): string | null {
+  if (user == null) return null;
+  if (typeof user === "number" || typeof user === "string") return String(user);
+  if (typeof user === "object" && "id" in user && (user as { id?: unknown }).id != null) {
+    return String((user as { id: unknown }).id);
+  }
+  return null;
+}
+
+async function listMyApplicationsViaMe(userJwt: string): Promise<AppRow[]> {
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) return [];
+
+  const response = await fetch(
+    `${strapiUrl}/api/users/me?populate[applications][fields][0]=documentId&populate[applications][populate][job][fields][0]=id&populate[applications][populate][job][fields][1]=documentId`,
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${userJwt}`,
+      },
+      cache: "no-store",
+    }
+  );
+
+  if (!response.ok) return [];
+  const me = await response.json().catch(() => ({}));
+  return Array.isArray(me?.applications) ? me.applications : [];
+}
+
+/** Find existing application for this user+job (doesn't rely on /users/me alone). */
+async function findExistingApplication(options: {
+  userId: number;
+  userJwt: string;
+  apiToken?: string;
+  jobId: string;
+  jobDocumentId: string;
+}): Promise<AppRow | undefined> {
+  const { userId, userJwt, apiToken, jobId, jobDocumentId } = options;
+
+  const viaMe = await listMyApplicationsViaMe(userJwt);
+  const fromMe = viaMe.find(
+    (app) =>
+      jobMatches(app.job, jobId) || jobMatches(app.job, jobDocumentId)
+  );
+  if (fromMe) return fromMe;
+
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) return undefined;
+
+  // Filter by job (allowed); match user in app code
+  const url = `${strapiUrl}/api/applications?filters[job][documentId][$eq]=${encodeURIComponent(jobDocumentId)}&populate[job][fields][0]=id&populate[job][fields][1]=documentId&populate[user][fields][0]=id&pagination[pageSize]=50`;
+  const response = await fetchWithAuthFallback(url, [apiToken, userJwt], {
+    cache: "no-store",
+  });
+  if (!response.ok) return undefined;
+
+  const result = await response.json().catch(() => ({}));
+  const rows: AppRow[] = Array.isArray(result?.data) ? result.data : [];
+  const wanted = String(userId);
+  return (
+    rows.find((row) => linkedUserId(row.user) === wanted) ||
+    // If user is hidden on JWT responses, any row for this job is a conflict for this session
+    (rows.length === 1 ? rows[0] : undefined)
+  );
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -138,20 +261,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { 
-      jobId, 
-      coverLetter, 
+    const {
+      jobId,
+      coverLetter,
       resumeId,
       selectedDegree,
       selectedFieldOfStudy,
       selectedCgpa,
-      totalExperienceYears
+      totalExperienceYears,
     } = body.data;
-    const userId = Number(session.userId);
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
     const userJwt = session.jwt;
 
-    // Validate required fields
     if (!jobId) {
       return NextResponse.json(
         { error: "Job ID is required" },
@@ -159,34 +280,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch job to get its documentId (required for Strapi v5 relations)
-    // Use filter query instead of direct ID lookup since Strapi v5 URLs expect documentId
-    let jobDocumentId: string | null = null;
-    try {
-      const jobResponse = await fetch(`${strapiUrl}/api/jobs?filters[id][$eq]=${jobId}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-        },
-        cache: "no-store",
-      });
-      
-      if (jobResponse.ok) {
-        const jobResult = await jobResponse.json();
-        if (jobResult?.data?.length > 0) {
-          jobDocumentId = jobResult.data[0].documentId;
-          console.log("✅ Fetched job documentId:", jobDocumentId, "for numeric ID:", jobId);
-        } else {
-          console.error("❌ No job found with ID:", jobId);
-        }
-      } else {
-        console.error("❌ Failed to fetch job. Status:", jobResponse.status);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching job:", error);
+    if (!userJwt) {
+      return NextResponse.json(
+        { error: "Session JWT is required to apply" },
+        { status: 401 }
+      );
     }
 
+    const tokens = [userJwt, apiToken];
+    const jobDocumentId = await resolveJobDocumentId(jobId, tokens);
     if (!jobDocumentId) {
       return NextResponse.json(
         { error: "Failed to fetch job information" },
@@ -194,39 +296,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Creating application with:", { 
-      userId, 
-      jobId,
+    const already = await findExistingApplication({
+      userId: Number(session.userId),
+      userJwt,
+      apiToken,
+      jobId: String(jobId),
       jobDocumentId,
-      resumeId 
     });
-
-    // Check if application already exists
-    const existingApplicationUrl = `${strapiUrl}/api/applications?filters[user][id][$eq]=${userId}&filters[job][id][$eq]=${jobId}`;
-    const existingResponse = await fetch(existingApplicationUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...(userJwt ? { Authorization: `Bearer ${userJwt}` } : apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-      },
-      cache: "no-store",
-    });
-
-    if (existingResponse.ok) {
-      const existingResult = await existingResponse.json();
-      if (existingResult?.data && existingResult.data.length > 0) {
-        return NextResponse.json(
-          { error: "You have already applied for this job" },
-          { status: 400 }
-        );
-      }
+    if (already) {
+      return NextResponse.json(
+        { data: already, alreadyApplied: true },
+        { status: 200 }
+      );
     }
 
-    // Prepare application data
-    // Strapi v5 requires documentId strings for relations
+    // Omit user — Document middleware / lifecycle sets it from JWT
     const applicationData: Record<string, unknown> = {
-      user: userId, // User relation still uses numeric ID (users-permissions)
-      job: jobDocumentId, // Use documentId string for custom content type
+      job: jobDocumentId,
       applicationStatus: APPLICATION_STATUSES[0], // "Applied"
     };
 
@@ -235,11 +321,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (resumeId) {
-      // Media fields need numeric ID directly
       applicationData.resume = Number(resumeId);
     }
 
-    // Add education and experience fields
     if (selectedDegree) {
       applicationData.selectedDegree = selectedDegree;
     }
@@ -256,18 +340,36 @@ export async function POST(request: NextRequest) {
       applicationData.totalExperienceYears = Number(totalExperienceYears);
     }
 
-    console.log("Application data to send:", JSON.stringify(applicationData, null, 2));
-
-    // Create the application
-    // Use API token instead of user JWT for relation creation
-    const response = await fetch(`${strapiUrl}/api/applications`, {
+    let response = await fetch(`${strapiUrl}/api/applications`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : userJwt ? { Authorization: `Bearer ${userJwt}` } : {}),
+        Authorization: `Bearer ${userJwt}`,
       },
       body: JSON.stringify({ data: applicationData }),
     });
+
+    // API-token fallback with explicit user if JWT create is forbidden
+    if (
+      !response.ok &&
+      apiToken &&
+      (response.status === 401 || response.status === 403)
+    ) {
+      await response.text().catch(() => "");
+      response = await fetch(`${strapiUrl}/api/applications`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiToken}`,
+        },
+        body: JSON.stringify({
+          data: {
+            ...applicationData,
+            user: Number(session.userId),
+          },
+        }),
+      });
+    }
 
     const result = await response.json().catch(() => ({}));
 
@@ -277,58 +379,18 @@ export async function POST(request: NextRequest) {
         result?.error ||
         result?.message ||
         "Failed to submit application";
-      console.error("Application creation error:", errorMessage);
-      console.error("Full error response:", JSON.stringify(result, null, 2));
-      console.error("Application data sent:", JSON.stringify(applicationData, null, 2));
+      console.error("Application creation error:", errorMessage, result);
       return NextResponse.json(
         { error: errorMessage },
         { status: response.status || 500 }
       );
     }
 
-    // Log what Strapi actually returned
-    console.log("✅ Application created successfully!");
-    console.log("Returned data:", JSON.stringify(result.data, null, 2));
-    
-    // Check if job relation was actually set
-    if (result.data?.job) {
-      console.log("✅ Job relation SET:", result.data.job);
-    } else {
-      console.warn("⚠️ Job relation NOT SET - Attempting to update...");
-      
-      // Try updating using documentId (Strapi v5 requirement)
-      const updateResponse = await fetch(`${strapiUrl}/api/applications/${result.data.documentId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          ...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
-        },
-        body: JSON.stringify({
-          data: {
-            job: jobDocumentId, // Use documentId string
-          },
-        }),
-      });
-
-      if (updateResponse.ok) {
-        const updateResult = await updateResponse.json();
-        console.log("✅ Job relation updated successfully!");
-        console.log("Update result:", JSON.stringify(updateResult.data, null, 2));
-        return NextResponse.json({ data: updateResult.data }, { status: 201 });
-      } else {
-        const updateError = await updateResponse.json().catch(() => ({}));
-        console.error("❌ Failed to update job relation. Status:", updateResponse.status);
-        console.error("Update error:", JSON.stringify(updateError, null, 2));
-      }
-    }
-
     return NextResponse.json({ data: result.data }, { status: 201 });
   } catch (error) {
     console.error("Application submission error:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to submit application";
-    return NextResponse.json(
-      { error: errorMessage },
-      { status: 500 }
-    );
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to submit application";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

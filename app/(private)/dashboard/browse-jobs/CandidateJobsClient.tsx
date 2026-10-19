@@ -23,15 +23,17 @@ import { extractRichTextPlainText } from "@/lib/strapi/rich-text";
 interface CandidateJobsClientProps {
   initialJobs: Job[];
   categories: Category[];
-  appliedJobIds: number[];
+  /** Numeric id and/or documentId strings */
+  appliedJobIds: Array<number | string>;
   /** Numeric id and/or documentId strings */
   savedJobIds: Array<number | string>;
 }
 
 export function CandidateJobsClient({ initialJobs, appliedJobIds, savedJobIds }: CandidateJobsClientProps) {
-  // Create a Set for fast lookup of applied jobs
-  const appliedJobsSet = useMemo(() => new Set(appliedJobIds), [appliedJobIds]);
-  // Create a Set for fast lookup of saved jobs (id + documentId)
+  const appliedJobsSet = useMemo(
+    () => new Set(appliedJobIds.map((id) => String(id))),
+    [appliedJobIds]
+  );
   const savedJobsSet = useMemo(
     () => new Set(savedJobIds.map((id) => String(id))),
     [savedJobIds]
@@ -407,7 +409,11 @@ export function CandidateJobsClient({ initialJobs, appliedJobIds, savedJobIds }:
                       key={job.id} 
                       job={job} 
                       viewMode={viewMode}
-                      isApplied={appliedJobsSet.has(job.id)}
+                      isApplied={
+                        appliedJobsSet.has(String(job.id)) ||
+                        (!!job.documentId &&
+                          appliedJobsSet.has(String(job.documentId)))
+                      }
                       isSaved={
                         savedJobsSet.has(String(job.id)) ||
                         (!!job.documentId && savedJobsSet.has(String(job.documentId)))

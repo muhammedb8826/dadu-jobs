@@ -49,7 +49,7 @@ interface Experience {
 }
 
 interface ApplyButtonProps {
-  jobId: number;
+  jobId: number | string;
   isDeadlinePassed: boolean;
   candidateResumeId?: number | null;
   hasApplied?: boolean;
@@ -72,6 +72,7 @@ export function ApplyButton({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [appliedLocally, setAppliedLocally] = useState(hasApplied);
   const router = useRouter();
 
   // Reset CGPA when education selection changes
@@ -149,6 +150,7 @@ export function ApplyButton({
         throw new Error(result.error || "Failed to submit application");
       }
 
+      setAppliedLocally(true);
       setSuccess(true);
       setTimeout(() => {
         setOpen(false);
@@ -156,7 +158,7 @@ export function ApplyButton({
         setSelectedEducationId("");
         setCgpa("");
         setSuccess(false);
-        router.refresh(); // Refresh to show updated application status
+        router.refresh();
       }, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to submit application");
@@ -165,7 +167,7 @@ export function ApplyButton({
     }
   };
 
-  if (hasApplied) {
+  if (appliedLocally || hasApplied) {
     return (
       <div className="text-center py-4">
         <Alert className="mb-4">

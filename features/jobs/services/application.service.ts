@@ -4,10 +4,45 @@ import type { Application } from "../types/application.types";
 function linkedUserId(user: unknown): string | null {
   if (user == null) return null;
   if (typeof user === "number" || typeof user === "string") return String(user);
-  if (typeof user === "object" && "id" in user && (user as { id?: unknown }).id != null) {
+  if (
+    typeof user === "object" &&
+    "id" in user &&
+    (user as { id?: unknown }).id != null
+  ) {
     return String((user as { id: unknown }).id);
   }
   return null;
+}
+
+/** Preferred: /users/me populate applications (JWT). */
+async function getApplicationsViaMe(
+  sessionJwt: string
+): Promise<Application[] | null> {
+  const strapiUrl = getStrapiURL();
+  if (!strapiUrl) return null;
+
+  const populate =
+    "populate[applications][populate][job][populate][categories][fields][0]=id&populate[applications][populate][job][populate][categories][fields][1]=name&populate[applications][populate][job][populate][categories][fields][2]=slug&populate[applications][populate][job][populate][salary]=*&populate[applications][populate][job][populate][company]=*&populate[applications][populate][job][populate][company][populate][logo][fields][0]=id&populate[applications][populate][job][populate][company][populate][logo][fields][1]=url&populate[applications][populate][job][populate][company][populate][logo][fields][2]=name&populate[applications][populate][job][populate][company][populate][logo][fields][3]=alternativeText&populate[applications][populate][job][populate][company][populate][logo][fields][4]=formats&populate[applications][populate][resume][fields][0]=id&populate[applications][populate][resume][fields][1]=url&populate[applications][populate][resume][fields][2]=name";
+
+  const response = await fetch(`${strapiUrl}/api/users/me?${populate}`, {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${sessionJwt}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error");
+    console.error("getApplicationsViaMe failed:", response.status, errorText);
+    return null;
+  }
+
+  const me = await response.json().catch(() => ({}));
+  const rows = me?.applications;
+  if (!Array.isArray(rows)) return [];
+  return rows as Application[];
 }
 
 async function fetchApplications(
@@ -15,8 +50,6 @@ async function fetchApplications(
   tokens: Array<string | undefined>,
   label: string
 ): Promise<Application[] | null> {
-  // Prefer JWT, then API token, then no auth (Public find is enabled locally).
-  // Sending an invalid Bearer token causes 401 even when Public find would succeed.
   const uniqueTokens = [...new Set(tokens.filter(Boolean))] as string[];
   const attempts: Array<string | undefined> = [...uniqueTokens, undefined];
 
@@ -36,13 +69,16 @@ async function fetchApplications(
 
     if (response.ok) {
       const result = await response.json().catch(() => ({}));
-      return Array.isArray(result?.data) ? result.data : result?.data ? [result.data] : [];
+      return Array.isArray(result?.data)
+        ? result.data
+        : result?.data
+          ? [result.data]
+          : [];
     }
 
     lastStatus = response.status;
     lastError = await response.text().catch(() => "Unknown error");
 
-    // Retry on auth failures (invalid JWT/API token, or role Forbidden)
     if (response.status === 401 || response.status === 403) {
       continue;
     }
@@ -60,28 +96,32 @@ async function fetchApplications(
 
 /**
  * Get applications for a candidate user.
- * Avoids filters[user] (often Forbidden / Invalid key) — matches linked user in app code.
  */
 export async function getApplications(
   userId: number,
   sessionJwt?: string
 ): Promise<Application[]> {
   try {
+    if (sessionJwt) {
+      const viaMe = await getApplicationsViaMe(sessionJwt);
+      if (viaMe != null) return viaMe;
+    }
+
     const strapiUrl = getStrapiURL();
     if (!strapiUrl) {
       return [];
     }
 
     const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
-
     const populateQuery =
       "populate[job][populate][categories][fields][0]=id&populate[job][populate][categories][fields][1]=name&populate[job][populate][categories][fields][2]=slug&populate[job][populate][salary]=*&populate[job][populate][company]=*&populate[job][populate][company][populate][logo][fields][0]=id&populate[job][populate][company][populate][logo][fields][1]=url&populate[job][populate][company][populate][logo][fields][2]=name&populate[job][populate][company][populate][logo][fields][3]=alternativeText&populate[job][populate][company][populate][logo][fields][4]=formats&populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name&populate[user][fields][0]=id&populate[user][fields][1]=username&populate[user][fields][2]=email&populate[user][fields][3]=type";
 
     const url = `${strapiUrl}/api/applications?${populateQuery}&sort[0]=createdAt:desc&pagination[pageSize]=100`;
 
+    // Prefer API token so `user` is populated for ownership matching
     const applications = await fetchApplications(
       url,
-      [sessionJwt, apiToken],
+      [apiToken, sessionJwt],
       "getApplications"
     );
     if (!applications) return [];
@@ -116,12 +156,11 @@ export async function getEmployerApplications(
       "populate[user][fields][0]=id&populate[user][fields][1]=username&populate[user][fields][2]=email&" +
       "populate[resume][fields][0]=id&populate[resume][fields][1]=url&populate[resume][fields][2]=name";
 
-    // Avoid filters[job][user] — match employer via populated job.user in app code.
     const url = `${strapiUrl}/api/applications?${populateQuery}&sort[0]=createdAt:desc&pagination[pageSize]=100`;
 
     const applications = await fetchApplications(
       url,
-      [sessionJwt, apiToken],
+      [apiToken, sessionJwt],
       "getEmployerApplications"
     );
     if (!applications) return [];
@@ -138,21 +177,20 @@ export async function getEmployerApplications(
 }
 
 /**
- * Get job IDs that a user has applied to
+ * Get job id / documentId keys the user has applied to.
  */
 export async function getAppliedJobIds(
   userId: number,
   sessionJwt?: string
-): Promise<Set<number>> {
+): Promise<Set<string>> {
   try {
     const applications = await getApplications(userId, sessionJwt);
-    const jobIds = new Set<number>();
+    const keys = new Set<string>();
     applications.forEach((app) => {
-      if (app.job?.id) {
-        jobIds.add(app.job.id);
-      }
+      if (app.job?.id != null) keys.add(String(app.job.id));
+      if (app.job?.documentId) keys.add(String(app.job.documentId));
     });
-    return jobIds;
+    return keys;
   } catch (error) {
     console.error("Error fetching applied job IDs:", error);
     return new Set();

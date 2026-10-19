@@ -149,7 +149,16 @@ export default async function DashboardJobDetailPage({
     getApplications(Number(session.userId), session.jwt),
     getSavedJobs(Number(session.userId), session.jwt),
   ]);
-  const hasApplied = userApplications.some((app) => app.job?.id === job.id);
+  const hasApplied = userApplications.some((app) => {
+    const linked = app.job;
+    if (!linked) return false;
+    return (
+      linked.id === job.id ||
+      (!!linked.documentId &&
+        !!job.documentId &&
+        linked.documentId === job.documentId)
+    );
+  });
   const isSaved = userSavedJobs.some((saved) => {
     const linked = saved.job;
     if (!linked) return false;
