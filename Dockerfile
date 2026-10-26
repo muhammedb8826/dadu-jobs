@@ -11,7 +11,7 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-ARG NEXT_PUBLIC_API_BASE_URL=https://jobs-api.bluemoongt.com
+ARG NEXT_PUBLIC_API_BASE_URL=https://jobs-api.dadu.edu.et
 ARG NEXT_PUBLIC_API_TOKEN=
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_PUBLIC_API_TOKEN=$NEXT_PUBLIC_API_TOKEN

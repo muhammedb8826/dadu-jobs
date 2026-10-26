@@ -13,7 +13,7 @@ const nextConfig = {
       },
       {
         protocol: "https",
-        hostname: "jobs-api.bluemoongt.com",
+        hostname: "jobs-api.dadu.edu.et",
         pathname: "/uploads/**",
       },
     ],
