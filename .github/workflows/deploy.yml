@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+concurrency:
+  group: jobs-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -33,25 +39,22 @@ jobs:
 
             echo "==> Writing .env"
             API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-https://jobs-api.dadu.edu.et}"
-            API_TOKEN="${NEXT_PUBLIC_API_TOKEN:-}"
-            printf '%s\n' \
-              "NEXT_PUBLIC_API_BASE_URL=${API_BASE_URL}" \
-              "NEXT_PUBLIC_API_TOKEN=${API_TOKEN}" \
-              > .env
-
-            if [ -z "${API_TOKEN}" ]; then
-              echo "WARNING: NEXT_PUBLIC_API_TOKEN is empty. Add it as a GitHub Actions secret."
+            umask 077
+            touch .env
+            sed -i '/^NEXT_PUBLIC_API_BASE_URL=/d' .env
+            printf 'NEXT_PUBLIC_API_BASE_URL=%s\n' "$API_BASE_URL" >> .env
+            if [ -n "${NEXT_PUBLIC_API_TOKEN:-}" ]; then
+              sed -i '/^NEXT_PUBLIC_API_TOKEN=/d' .env
+              printf 'NEXT_PUBLIC_API_TOKEN=%s\n' "$NEXT_PUBLIC_API_TOKEN" >> .env
             fi
 
             echo "==> Ensuring docker network"
             docker network inspect jobs-shared-network >/dev/null 2>&1 || \
               docker network create jobs-shared-network
 
-            echo "==> Removing stale frontend container (name conflicts)"
-            docker rm -f jobs-frontend 2>/dev/null || true
-
             echo "==> Building and starting containers"
-            docker compose up -d --build --remove-orphans
+            docker compose up -d --build
+            curl --fail --silent --show-error --retry 12 --retry-connrefused --retry-delay 5 http://127.0.0.1:3015/ > /dev/null
 
             echo "==> Cleaning old images"
             docker image prune -f
