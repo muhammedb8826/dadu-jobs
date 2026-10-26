@@ -1,47 +1,28 @@
-# Place on VPS as /etc/nginx/sites-available/dadu-jobs
-# Then: ln -s /etc/nginx/sites-available/dadu-jobs /etc/nginx/sites-enabled/
-# After DNS points here, run certbot for both domains.
-
-upstream jobs_frontend {
-    server 127.0.0.1:3015;
-}
-
-upstream jobs_api {
-    server 127.0.0.1:3016;
+# Production frontend configuration is installed by setup-nginx.sh.
+# The jobs API uses its existing separate Nginx configuration.
+server {
+    listen 80;
+    server_name jobs.dadu.edu.et;
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://$host$request_uri; }
 }
 
 server {
-    listen 80;
-    server_name jobs.bluemoongt.com;
-
+    listen 127.0.0.1:8443 ssl;
+    server_name jobs.dadu.edu.et;
+    ssl_certificate /etc/letsencrypt/live/jobs.dadu.edu.et/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/jobs.dadu.edu.et/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
     client_max_body_size 50M;
-
     location / {
-        proxy_pass http://jobs_frontend;
+        proxy_pass http://127.0.0.1:3015;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-
-server {
-    listen 80;
-    server_name jobs-api.bluemoongt.com;
-
-    client_max_body_size 100M;
-
-    location / {
-        proxy_pass http://jobs_api;
-        proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection 'upgrade';
+        proxy_read_timeout 120s;
     }
 }
